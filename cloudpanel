@@ -1,0 +1,224 @@
+#!/bin/bash
+
+# Define Colors using real escape character
+ESC=$'\033'
+RED="${ESC}[1;31m"
+GREEN="${ESC}[1;32m"
+YELLOW="${ESC}[1;33m"
+NC="${ESC}[0m" # Reset color
+
+# Path to CloudPanel SQLite database
+dbPath="/home/clp/htdocs/app/data/db.sq3"
+
+show_help() {
+    cat << EOF
+
+${YELLOW}main${NC}
+cloudpanel init:install --cfToken='0123456789abcdef0123456789'
+
+${YELLOW}cloudflare${NC}
+cloudpanel cloudflare:update:token --cfToken='0123456789abcdef0123456789'
+
+${YELLOW}sites${NC}
+cloudpanel site:add:classicpress --domainName='domain.com'
+cloudpanel site:add:php --domainName='domain.com'
+cloudpanel site:add:reverse-proxy --domainName='domain.com' --reverseProxyUrl='https://127.0.0.1:8000'
+cloudpanel site:add:static --domainName='domain.com'
+cloudpanel site:add:wordpress --domainName='domain.com'
+cloudpanel site:delete
+cloudpanel site:list
+
+${YELLOW}certificate${NC}
+cloudpanel site:install:certificate
+
+${YELLOW}migration${NC}
+cloudpanel site:migration:classicpress --domainName='domain.com' --stagingName='staging.domain.com'
+cloudpanel site:migration:jigsaw --domainName='domain.com' --stagingName='staging.domain.com'
+cloudpanel site:migration:novaris --domainName='domain.com' --stagingName='staging.domain.com'
+cloudpanel site:migration:wordpress --domainName='domain.com' --stagingName='staging.domain.com'
+
+${YELLOW}restore${NC}
+cloudpanel site:restore:classicpress --domainName='domain.com' --backupFile='https://downloads.domain.com/backup.tar'
+cloudpanel site:restore:wordpress --domainName='domain.com' --backupFile='https://downloads.domain.com/backup.tar'
+EOF
+}
+
+parse_domain_input() {
+    for arg in "$@"; do
+        case $arg in
+            --domainName=*)
+                domainName="${arg#*=}"
+                ;;
+        esac
+    done
+
+    if [[ -z "$domainName" ]]; then
+        echo "${RED}[ERROR]${NC} Missing required argument: --domainName='yourdomain.com'"
+        exit 1
+    fi
+
+    if ! [[ "$domainName" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        echo "${RED}[ERROR]${NC} Invalid domain name: '$domainName'. A valid TLD is required."
+        exit 1
+    fi
+
+    stripped=$(echo "$domainName" | sed -E 's/^www\.//')
+    parts=($(echo "$stripped" | tr '.' ' '))
+    tld_index=$((${#parts[@]} - 1))
+
+    if [ "$tld_index" -ge 2 ]; then
+        siteUser="${parts[$tld_index-1]}-${parts[0]}"
+    else
+        siteUser="${parts[0]}"
+    fi
+
+    if [[ -z "$siteUser" ]]; then
+        echo "${RED}[ERROR]${NC} Could not extract valid site user from domain."
+        exit 1
+    fi
+
+    if sqlite3 "$dbPath" "SELECT COUNT(*) FROM site WHERE domain_name = '$domainName';" | grep -qv '^0$'; then
+        echo "${RED}[ERROR]${NC} Site '$domainName' already exists in the CloudPanel database."
+        exit 1
+    fi
+
+    sitePassword=$(tr -dc 'A-Za-z0-9@#%+=_' </dev/urandom | head -c 20)
+}
+
+check_nginx_conf() {
+    local domain="$1"
+    local confPath="/etc/nginx/sites-enabled/${domain}.conf"
+
+    if [ ! -f "$confPath" ]; then
+        echo "${GREEN}[INFO]${NC} No existing Nginx config detected for $domain. Proceeding..."
+    else
+        echo "${RED}[ERROR]${NC} Nginx config already exists: $confPath"
+        exit 1
+    fi
+}
+
+install_certificate() {
+    local domain="$1"
+    local cert="/etc/letsencrypt/live/${domain}/fullchain.pem"
+    local key="/etc/letsencrypt/live/${domain}/privkey.pem"
+
+    echo "[INFO] Checking for existing certificate for $domain..."
+
+    if [ ! -f "$cert" ]; then
+        echo "${YELLOW}[INFO]${NC} No certificate found. Generating with Certbot..."
+
+        certbot certonly \
+            --noninteractive \
+            --agree-tos \
+            --register-unsafely-without-email \
+            --dns-cloudflare \
+            --dns-cloudflare-credentials /root/.cloudflare/token.ini \
+            --dns-cloudflare-propagation-seconds 25 \
+            -d "$domain" \
+            -d "*.$domain"
+
+        if [ -f "$cert" ]; then
+            echo "${GREEN}[SUCCESS]${NC} Certificate for $domain has been generated."
+        else
+            echo "${RED}[ERROR]${NC} Failed to generate certificate for $domain."
+            return 1
+        fi
+    else
+        echo "${GREEN}[INFO]${NC} Certificate for $domain already exists."
+    fi
+
+    if [ -f "$cert" ] && [ -f "$key" ]; then
+        echo "${YELLOW}[INFO]${NC} Installing certificate via clpctl..."
+        clpctl site:install:certificate \
+            --domainName="$domain" \
+            --privateKey="$key" \
+            --certificate="$cert"
+
+        if [ $? -eq 0 ]; then
+            echo "${GREEN}[SUCCESS]${NC} SSL certificate has been installed for $domain."
+        else
+            echo "${RED}[ERROR]${NC} Failed to install certificate via clpctl."
+        fi
+    fi
+}
+
+case "$1" in
+    site:add:php)
+        parse_domain_input "$@"
+        echo "${GREEN}Success:${NC} Adding PHP site for domain: $domainName"
+        echo "Site User: $siteUser"
+        echo "Site Password: $sitePassword"
+        ;;
+
+    site:add:static)
+        parse_domain_input "$@"
+        check_nginx_conf "$domainName"
+        clpctl site:add:static --domainName="$domainName" --siteUser="$siteUser" --siteUserPassword="$sitePassword"
+        install_certificate "$domainName"
+        ;;
+
+site:list)
+    echo
+    echo -e "${YELLOW}Listing CloudPanel Sites...${NC}"
+    echo
+
+    dbPath="/home/clp/htdocs/app/data/db.sq3"
+    certDir="/etc/nginx/ssl-certificates"
+
+    if ! command -v sqlite3 &> /dev/null; then
+        echo "${RED}[ERROR]${NC} sqlite3 is required but not installed."
+        exit 1
+    fi
+
+    printf "%-4s | %-22s | %-12s | %-15s | %-15s\n" "ID" "Domain Name" "Site User" "Type" "Cert Expiry"
+    printf "%0.s-" {1..80}; echo
+
+    sqlite3 -readonly "$dbPath" <<EOF | while IFS='|' read -r id domain user app; do
+SELECT site.id, site.domain_name, site.user, site.application
+FROM site LEFT JOIN php_settings ON site.id = php_settings.site_id
+ORDER BY site.id ASC;
+EOF
+
+        # Detect ClassicPress
+        if [[ "$app" == "WordPress" ]]; then
+            version_file="/home/${user}/htdocs/${domain}/wp-includes/version.php"
+            if [[ -f "$version_file" ]]; then
+                cp_version=$(grep "\$cp_version =" "$version_file" | awk -F"'" '{print $2}')
+                if [[ "$cp_version" == "1.7.3" || "$cp_version" == "2.4.1" ]]; then
+                    app="ClassicPress"
+                fi
+            fi
+        elif [[ "$app" == "ReverseProxy" ]]; then
+            app="Reverse Proxy"
+        fi
+
+        # Check SSL certificate
+        certExpiry="Not found"
+        certFile=$(find "$certDir" -type f \( -iname "*${domain}*.crt" -o -iname "*${domain}*.cert" -o -iname "*${domain}*.pem" \) | head -n1)
+        if [[ -n "$certFile" ]]; then
+            expiry=$(openssl x509 -enddate -noout -in "$certFile" 2>/dev/null | cut -d= -f2)
+            if [[ -n "$expiry" ]]; then
+                expiry_fmt=$(date -d "$expiry" "+%m-%d-%Y" 2>/dev/null)
+                certExpiry="${expiry_fmt:-Error}"
+            else
+                certExpiry="Error"
+            fi
+        fi
+
+        printf "%-4s | %-22s | %-12s | %-15s | %-15s\n" "$id" "$domain" "$user" "$app" "$certExpiry"
+        echo
+    done
+    ;;
+
+
+    ""|--help|-h)
+        show_help
+        ;;
+
+    *)
+        echo "${RED}[ERROR]${NC} Unknown command: $1"
+        echo
+        show_help
+        exit 1
+        ;;
+esac
