@@ -6,7 +6,7 @@ Version 2 is written in Python using only the standard library. A server needs n
 
 > **Status:** being ported from the Node version ([techkodeninja/cloudpanel](https://github.com/techkodeninja/cloudpanel)). Commands that aren't ported yet say so; use the Node version for those until they are.
 >
-> Ported so far: `init:install`.
+> Ported so far: `init:install`, `site:add:php`, `site:add:static`, `site:add:reverse-proxy`.
 
 ## Install
 On a fresh Ubuntu (22.04, 24.04 or 26.04) or Debian (12, 13) server, as root:

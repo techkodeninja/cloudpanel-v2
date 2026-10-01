@@ -6,6 +6,10 @@ import tempfile
 from pathlib import Path
 
 RECORDER = Path(__file__).parent / "fakes" / "recorder.py"
+SSH_KEYGEN = Path(__file__).parent / "fakes" / "ssh_keygen.py"
+
+# Fakes that do more than record (they're used under these command names).
+SPECIAL = {"ssh-keygen": SSH_KEYGEN}
 
 
 class FakeCommands:
@@ -29,8 +33,9 @@ class FakeCommands:
         bin_dir = Path(self._dir.name) / "bin"
         bin_dir.mkdir()
         os.chmod(RECORDER, 0o755)
+        os.chmod(SSH_KEYGEN, 0o755)
         for name in self.names:
-            (bin_dir / name).symlink_to(RECORDER)
+            (bin_dir / name).symlink_to(SPECIAL.get(name, RECORDER))
         self.log = Path(self._dir.name) / "calls.log"
         self.log.touch()
 
