@@ -9,7 +9,7 @@ from .errors import CloudPanelError
 # command -> "module:function" in cloudpanel.commands, or None while it is
 # still being ported from the Node version.
 COMMANDS = {
-    "init:install": None,
+    "init:install": "init:install",
     "site:add:classicpress": None,
     "site:add:php": None,
     "site:add:reverse-proxy": None,

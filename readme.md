@@ -5,6 +5,8 @@ Tools and automation on top of CloudPanel's `clpctl`: sites with Let's Encrypt c
 Version 2 is written in Python using only the standard library. A server needs nothing but `python3` (already on Ubuntu), so there's no nvm, no npm and no private key to download it.
 
 > **Status:** being ported from the Node version ([techkodeninja/cloudpanel](https://github.com/techkodeninja/cloudpanel)). Commands that aren't ported yet say so; use the Node version for those until they are.
+>
+> Ported so far: `init:install`.
 
 ## Install
 On a fresh Ubuntu (22.04, 24.04 or 26.04) or Debian (12, 13) server, as root:
