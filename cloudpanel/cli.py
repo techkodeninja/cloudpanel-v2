@@ -11,9 +11,9 @@ from .errors import CloudPanelError
 COMMANDS = {
     "init:install": "init:install",
     "site:add:classicpress": None,
-    "site:add:php": None,
-    "site:add:reverse-proxy": None,
-    "site:add:static": None,
+    "site:add:php": "sites:add_php",
+    "site:add:reverse-proxy": "sites:add_reverse_proxy",
+    "site:add:static": "sites:add_static",
     "site:add:wordpress": None,
     "site:delete": None,
     "site:list": None,
