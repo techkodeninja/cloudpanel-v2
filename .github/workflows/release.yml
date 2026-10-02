@@ -1,0 +1,36 @@
+# When a release is published (tag v2.0.1, ...): check the tag matches the
+# version in the code, build dist/cloudpanel and attach it to the release.
+# Servers install and update from that attached file.
+name: release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Tag matches __version__
+        run: |
+          version=$(python3 -c 'import cloudpanel; print(cloudpanel.__version__)')
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} doesn't match the version in cloudpanel/__init__.py (v${version}). Delete the release, then tag v${version}."
+            exit 1
+          fi
+      - name: Test
+        run: python3 -m unittest < /dev/null
+      - name: Build and attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./build.sh
+          ./dist/cloudpanel --version
+          gh release upload "${GITHUB_REF_NAME}" dist/cloudpanel --clobber
