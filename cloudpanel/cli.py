@@ -122,8 +122,16 @@ def main(argv):
         print(f"cloudpanel {__version__}")
         return 0
 
-    command, params = argv[0], parse_args(argv[1:])
+    # A blank line before and after a command's output, so it stands apart
+    # from the prompt.
+    print(flush=True)
+    try:
+        return _run_command(argv[0], parse_args(argv[1:]))
+    finally:
+        print(flush=True)
 
+
+def _run_command(command, params):
     if command not in COMMANDS:
         ui.fail(f"Unknown command: {command}")
         print(help_text())

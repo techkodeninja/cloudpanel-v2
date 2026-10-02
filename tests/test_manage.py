@@ -32,6 +32,7 @@ class ListTest(SiteTestCase):
         self.assertIn("12-31-2026", next(l for l in lines if " example.com " in l))
         self.assertIn("Reverse Proxy", next(l for l in lines if "a.b.example.com" in l))
         self.assertIn("Not found", next(l for l in lines if "a.b.example.com" in l))
+        self.assertTrue(out.startswith("\n") and out.endswith("\n\n"), repr(out))  # blank line before and after
 
 
 class DeleteTest(SiteTestCase):
