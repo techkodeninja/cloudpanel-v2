@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 import io
+import json
 
 from cloudpanel import __version__, backup, updates
 from cloudpanel.commands import self_update
@@ -224,10 +225,11 @@ class SelfUpdateTest(SiteTestCase):
         return path.read_bytes()
 
     def github(self, version, bundle=b""):
-        """Stand-in for GitHub: __init__.py says `version`, dist/cloudpanel is `bundle`."""
-        def urlopen(url, timeout=None):
+        """Stand-in for GitHub: the latest release is v`version`, its file is `bundle`."""
+        def urlopen(request, timeout=None):
+            url = request.full_url
             self.urls.append(url)
-            data = f'__version__ = "{version}"\n'.encode() if url.endswith("__init__.py") else bundle
+            data = json.dumps({"tag_name": f"v{version}"}).encode() if url == updates.LATEST_RELEASE else bundle
             response = mock.MagicMock()
             response.__enter__.return_value.read.return_value = data
             return response
@@ -242,6 +244,7 @@ class SelfUpdateTest(SiteTestCase):
             code, out, err = self.cli("self:update")
         self.assertEqual(code, 0, err)
         self.assertEqual(target.read_bytes(), new)
+        self.assertEqual(self.urls[-1], "https://github.com/techkodeninja/cloudpanel-v2/releases/download/v99.0.0/cloudpanel")
         self.assertIn("99.0.0", out)
         self.assertEqual([p.name for p in self.tmp.iterdir() if p.name.startswith(".cloudpanel-")], [])
 
@@ -250,7 +253,7 @@ class SelfUpdateTest(SiteTestCase):
             code, out, _ = self.cli("self:update")
         self.assertEqual(code, 0)
         self.assertIn("Up to date", out)
-        self.assertEqual(len(self.urls), 1)  # only the version number
+        self.assertEqual(self.urls, [updates.LATEST_RELEASE])  # only asked which release is latest
 
     def test_check_only(self):
         target = self.tmp / "cloudpanel"
@@ -268,7 +271,7 @@ class SelfUpdateTest(SiteTestCase):
         with self.github(__version__, new), mock.patch.object(sys, "argv", [str(target)]):
             code, _, err = self.cli("self:update", "--branch=some-branch")
         self.assertEqual(code, 0, err)
-        self.assertTrue(any("/some-branch/dist/cloudpanel" in url for url in self.urls))
+        self.assertEqual(self.urls, ["https://raw.githubusercontent.com/techkodeninja/cloudpanel-v2/some-branch/dist/cloudpanel"])
         self.assertEqual(target.read_bytes(), new)
 
     def test_refuses_a_bad_download(self):
@@ -279,6 +282,13 @@ class SelfUpdateTest(SiteTestCase):
         self.assertEqual(code, 1)
         self.assertIn("is not a cloudpanel bundle", err)
         self.assertEqual(target.read_bytes(), old)
+
+    def test_no_release_yet(self):
+        error = updates.urllib.error.HTTPError(updates.LATEST_RELEASE, 404, "Not Found", {}, None)
+        with mock.patch.object(updates.urllib.request, "urlopen", side_effect=error):
+            code, _, err = self.cli("self:update")
+        self.assertEqual(code, 1)
+        self.assertIn("No release published yet", err)
 
     def test_from_source(self):
         with self.github("99.0.0"), mock.patch.object(sys, "argv", ["/nope/cloudpanel/__main__.py"]):

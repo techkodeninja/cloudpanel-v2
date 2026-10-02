@@ -9,16 +9,14 @@ It replaces the Node version ([techkodeninja/cloudpanel](https://github.com/tech
 ## Install
 On a fresh Ubuntu (22.04, 24.04 or 26.04) or Debian (12, 13) server, as root:
 <pre>
-curl -fsSL https://raw.githubusercontent.com/techkodeninja/cloudpanel-v2/main/dist/cloudpanel -o /usr/local/bin/cloudpanel
-chmod +x /usr/local/bin/cloudpanel
-cloudpanel --help
+curl -fsSL https://github.com/techkodeninja/cloudpanel-v2/releases/latest/download/cloudpanel -o /usr/local/bin/cloudpanel && chmod +x /usr/local/bin/cloudpanel && cloudpanel --version
 </pre>
 To update:
 <pre>
-cloudpanel self:update            # updates if there's a newer version
+cloudpanel self:update            # installs the latest release if it's newer
 cloudpanel self:update --check    # only checks
 </pre>
-Commands also tell you (at most once a day) when a newer version is out. `CLOUDPANEL_NO_UPDATE_CHECK=1` turns that off.
+Servers only get published releases, not every change merged to `main`. Commands also tell you (at most once a day) when a newer release is out. `CLOUDPANEL_NO_UPDATE_CHECK=1` turns that off.
 
 Requires Python 3.10 or newer (`python3 --version`).
 
@@ -63,7 +61,17 @@ python3 -m cloudpanel --help
 python3 -m unittest
 </pre>
 
-Before committing a change to `cloudpanel/`, raise `__version__` in `cloudpanel/__init__.py` (that's how servers know there's an update) and rebuild the bundle so `dist/cloudpanel` matches:
+Before committing a change to `cloudpanel/`, raise `__version__` in `cloudpanel/__init__.py` and rebuild the bundle so `dist/cloudpanel` matches:
 <pre>
 ./build.sh
 </pre>
+
+To try a branch on a server before releasing it:
+<pre>
+cloudpanel self:update --branch=my-branch
+</pre>
+
+## Releasing
+1. Merge the changes into `main` (with `__version__` raised, e.g. `2.0.2`).
+2. On GitHub: **Releases → Draft a new release → Choose a tag**, type `v2.0.2` (a `v` plus the version), target `main`, **Publish release**.
+3. The release workflow checks the tag matches the version, runs the tests, and attaches the `cloudpanel` file. When it's done, servers see the update.

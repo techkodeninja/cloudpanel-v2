@@ -1,7 +1,8 @@
-"""Knowing when a newer version is on GitHub.
+"""Knowing when a newer version is out.
 
-The version number lives in cloudpanel/__init__.py, so the latest one is
-read from that small file on GitHub (no download of the whole program).
+A new version is a GitHub release (tag v2.0.2, ...) with the bundled
+program attached as `cloudpanel`. Merging to main alone doesn't reach
+servers; publishing a release does.
 """
 
 import json
@@ -9,33 +10,48 @@ import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
 from . import __version__, ui
 from .errors import CloudPanelError
 
-RAW = "https://raw.githubusercontent.com/techkodeninja/cloudpanel-v2/{branch}/{path}"
+REPO = "techkodeninja/cloudpanel-v2"
+LATEST_RELEASE = f"https://api.github.com/repos/{REPO}/releases/latest"
+RELEASE_FILE = f"https://github.com/{REPO}/releases/download/{{tag}}/cloudpanel"
+BRANCH_FILE = f"https://raw.githubusercontent.com/{REPO}/{{branch}}/dist/cloudpanel"
 STATE_FILE = Path("/root/.cloudpanel/update-check")
 CHECK_EVERY = 24 * 60 * 60  # seconds
 
 
-def fetch(branch, path, timeout=60):
-    url = RAW.format(branch=branch, path=path)
+def fetch(url, timeout=60):
+    headers = {"User-Agent": "cloudpanel"}
+    if url.startswith("https://api.github.com/"):
+        headers["Accept"] = "application/vnd.github+json"
+    request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.read()
+    except urllib.error.HTTPError as error:
+        if error.code == 404 and url == LATEST_RELEASE:
+            raise CloudPanelError(f"No release published yet on github.com/{REPO}/releases.") from None
+        raise CloudPanelError(f"Could not download {url}: {error}") from None
     except OSError as error:
         raise CloudPanelError(f"Could not download {url}: {error}") from None
 
 
-def latest_version(branch="main", timeout=10):
-    """The version number on GitHub, e.g. '2.0.1'."""
-    text = fetch(branch, "cloudpanel/__init__.py", timeout).decode("utf-8", "replace")
-    match = re.search(r'^__version__\s*=\s*"([^"]+)"', text, re.M)
-    if not match:
-        raise CloudPanelError("Could not find the version number on GitHub.")
-    return match.group(1)
+def latest_release(timeout=10):
+    """The newest published release: (version, tag), e.g. ('2.0.1', 'v2.0.1')."""
+    try:
+        tag = json.loads(fetch(LATEST_RELEASE, timeout))["tag_name"]
+    except (ValueError, KeyError, TypeError):
+        raise CloudPanelError("Could not read the latest release from GitHub.") from None
+    return tag.lstrip("v"), tag
+
+
+def latest_version(timeout=10):
+    return latest_release(timeout)[0]
 
 
 def parse(version):
