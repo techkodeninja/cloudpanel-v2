@@ -72,6 +72,6 @@ cloudpanel self:update --branch=my-branch
 </pre>
 
 ## Releasing
-1. Merge the changes into `main` (with `__version__` raised, e.g. `1.0.1`).
-2. On GitHub: **Releases → Draft a new release → Choose a tag**, type `v1.0.1` (a `v` plus the version), target `main`, **Publish release**.
+1. Merge the changes into `main` (with `__version__` raised, e.g. `0.0.2`).
+2. On GitHub: **Releases → Draft a new release → Choose a tag**, type `v0.0.2` (a `v` plus the version), target `main`, **Publish release**.
 3. The release workflow checks the tag matches the version, runs the tests, and attaches the `cloudpanel` file. When it's done, servers see the update.
