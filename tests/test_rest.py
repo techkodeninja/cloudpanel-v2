@@ -334,8 +334,8 @@ class NotifyTest(SiteTestCase):
             updates.notify()  # no exception
 
     def test_versions_compare_as_numbers(self):
-        self.assertTrue(updates.is_newer("2.0.10", "2.0.9"))
-        self.assertFalse(updates.is_newer("2.0.1", "2.0.1"))
+        self.assertTrue(updates.is_newer("1.0.10", "1.0.9"))
+        self.assertFalse(updates.is_newer("1.0.0", "1.0.0"))
 
 
 if __name__ == "__main__":

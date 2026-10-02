@@ -1,4 +1,4 @@
-# When a release is published (tag v2.0.1, ...): check the tag matches the
+# When a release is published (tag v1.0.0, ...): check the tag matches the
 # version in the code, build dist/cloudpanel and attach it to the release.
 # Servers install and update from that attached file.
 name: release

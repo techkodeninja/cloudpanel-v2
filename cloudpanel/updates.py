@@ -1,6 +1,6 @@
 """Knowing when a newer version is out.
 
-A new version is a GitHub release (tag v2.0.2, ...) with the bundled
+A new version is a GitHub release (tag v1.0.0, ...) with the bundled
 program attached as `cloudpanel`. Merging to main alone doesn't reach
 servers; publishing a release does.
 """
@@ -42,7 +42,7 @@ def fetch(url, timeout=60):
 
 
 def latest_release(timeout=10):
-    """The newest published release: (version, tag), e.g. ('2.0.1', 'v2.0.1')."""
+    """The newest published release: (version, tag), e.g. ('1.0.0', 'v1.0.0')."""
     try:
         tag = json.loads(fetch(LATEST_RELEASE, timeout))["tag_name"]
     except (ValueError, KeyError, TypeError):
@@ -55,7 +55,7 @@ def latest_version(timeout=10):
 
 
 def parse(version):
-    """'2.0.10' -> (2, 0, 10), so 2.0.10 counts as newer than 2.0.9."""
+    """'1.0.10' -> (1, 0, 10), so 1.0.10 counts as newer than 1.0.9."""
     return tuple(int(part) if part.isdigit() else 0 for part in re.split(r"[.\-]", version))
 
 
