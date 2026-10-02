@@ -20,13 +20,14 @@ COMMANDS = {
     "site:fix:ssh": "fix_ssh:fix_ssh",
     "github:key": "github_key:show",
     "github:key:rotate": "github_key:rotate",
-    "site:install:certificate": None,
-    "site:update:certificate": None,
-    "site:migration:classicpress": None,
-    "site:migration:novaris": None,
-    "site:migration:wordpress": None,
-    "site:restore:classicpress": None,
-    "site:restore:wordpress": None,
+    "site:install:certificate": "certificate:install",
+    "site:update:certificate": "certificate:update",
+    "site:migration:classicpress": "migrate:wordpress",
+    "site:migration:novaris": "migrate:novaris",
+    "site:migration:wordpress": "migrate:wordpress",
+    "site:restore:classicpress": "restore:restore_classicpress",
+    "site:restore:wordpress": "restore:restore_wordpress",
+    "self:update": "self_update:self_update",
 }
 
 
@@ -51,6 +52,7 @@ def help_text():
     ssh_report = note("(show sites with SSH/git problems)")
     github_show = note("(show this server's shared GitHub key)")
     version_line = note(f"cloudpanel {__version__}")
+    cert_note = note("  update: reinstalls the Let's Encrypt certificate if the site's is missing or expires within 30 days.")
     return f"""
 {h('main')}
 cloudpanel init:install --cfToken='0123456789abcdef0123456789'
@@ -81,6 +83,7 @@ cloudpanel github:key:rotate                              {note('(replace it wit
 {h('certificate')}
 cloudpanel site:install:certificate --domainName='domain.com'
 cloudpanel site:update:certificate --domainName='domain.com'
+{cert_note}
 
 {h('migration')}
 cloudpanel site:migration:classicpress --domainName='domain.com' --stagingName='staging.domain.com'
@@ -92,6 +95,9 @@ cloudpanel site:migration:wordpress --domainName='domain.com' --stagingName='sta
 {h('restore')}
 cloudpanel site:restore:classicpress --domainName='domain.com' --backupFile='https://downloads.domain.com/backup.tar'
 cloudpanel site:restore:wordpress --domainName='domain.com' --backupFile='https://downloads.domain.com/backup.tar'
+
+{h('update')}
+cloudpanel self:update                                    {note('(download the latest version of this tool)')}
 
 {version_line}
 """

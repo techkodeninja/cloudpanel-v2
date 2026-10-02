@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
@@ -62,7 +63,8 @@ class MainTest(unittest.TestCase):
         self.assertIn("site:add:php", out)
 
     def test_command_not_ported_yet(self):
-        code, _, err = run_cli("site:restore:wordpress")
+        with mock.patch.dict(cli.COMMANDS, {"site:add:jigsaw": None}):
+            code, _, err = run_cli("site:add:jigsaw")
         self.assertEqual(code, 2)
         self.assertIn("isn't available in this version yet", err)
 
@@ -70,7 +72,7 @@ class MainTest(unittest.TestCase):
         _, out, _ = run_cli("--help")
         for word in out.split():
             if word.count(":") >= 1 and word[0].isalpha() and not word.startswith(("http", "--")):
-                if word.split(":")[0] in ("init", "site", "github"):
+                if word.split(":")[0] in ("init", "site", "github", "self"):
                     self.assertIn(word, cli.COMMANDS, f"{word} is in the help but not registered")
 
 

@@ -2,11 +2,10 @@
 
 import re
 import sys
-from datetime import datetime, timezone
 
 from .. import certificates, db, ui
 from ..errors import CloudPanelError, UsageError
-from ..run import clpctl, command_exists, run
+from ..run import clpctl, command_exists
 from ..sites import htdocs
 
 APP_NAMES = {"ReverseProxy": "Reverse Proxy"}
@@ -35,12 +34,8 @@ def certificate_expiry(domain):
     path = certificates.find_site_certificate(domain)
     if not path:
         return "Not found"
-    try:
-        output = run(["openssl", "x509", "-enddate", "-noout", "-in", path])
-        expiry = datetime.strptime(output.strip().split("=", 1)[1], "%b %d %H:%M:%S %Y %Z")
-        return expiry.replace(tzinfo=timezone.utc).strftime("%m-%d-%Y")
-    except (CloudPanelError, ValueError, IndexError):
-        return "Error"
+    expiry = certificates.expiry_date(path)
+    return expiry.strftime("%m-%d-%Y") if expiry else "Error"
 
 
 def table(headers, rows):
