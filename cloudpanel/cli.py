@@ -10,11 +10,11 @@ from .errors import CloudPanelError
 # still being ported from the Node version.
 COMMANDS = {
     "init:install": "init:install",
-    "site:add:classicpress": None,
+    "site:add:classicpress": "wordpress:add_classicpress",
     "site:add:php": "sites:add_php",
     "site:add:reverse-proxy": "sites:add_reverse_proxy",
     "site:add:static": "sites:add_static",
-    "site:add:wordpress": None,
+    "site:add:wordpress": "wordpress:add_wordpress",
     "site:delete": "manage:delete_site",
     "site:list": "manage:list_sites",
     "site:fix:ssh": "fix_ssh:fix_ssh",
