@@ -15,11 +15,11 @@ COMMANDS = {
     "site:add:reverse-proxy": "sites:add_reverse_proxy",
     "site:add:static": "sites:add_static",
     "site:add:wordpress": None,
-    "site:delete": None,
-    "site:list": None,
-    "site:fix:ssh": None,
-    "github:key": None,
-    "github:key:rotate": None,
+    "site:delete": "manage:delete_site",
+    "site:list": "manage:list_sites",
+    "site:fix:ssh": "fix_ssh:fix_ssh",
+    "github:key": "github_key:show",
+    "github:key:rotate": "github_key:rotate",
     "site:install:certificate": None,
     "site:update:certificate": None,
     "site:migration:classicpress": None,
@@ -63,7 +63,7 @@ cloudpanel site:add:php --domainName='domain.com'
 cloudpanel site:add:reverse-proxy --domainName='domain.com' --reverseProxyUrl='https://127.0.0.1:8000'
 cloudpanel site:add:static --domainName='domain.com'
 cloudpanel site:add:wordpress --domainName='domain.com' --wpAdmin='john' --wpPassword='1234567890' --wpEmail='john@domain.com' --wpType='single'
-cloudpanel site:delete
+cloudpanel site:delete [--domainName='domain.com'] [--yes]
 cloudpanel site:list
 {note('  --wpType / --cpType: single (default), subdirectory or subdomain (multisite).')}
 {note('  subdomain needs the main domain (example.com) and a * DNS record in Cloudflare.')}

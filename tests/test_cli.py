@@ -62,7 +62,7 @@ class MainTest(unittest.TestCase):
         self.assertIn("site:add:php", out)
 
     def test_command_not_ported_yet(self):
-        code, _, err = run_cli("site:list")
+        code, _, err = run_cli("site:restore:wordpress")
         self.assertEqual(code, 2)
         self.assertIn("isn't available in this version yet", err)
 

@@ -7,9 +7,10 @@ from pathlib import Path
 
 RECORDER = Path(__file__).parent / "fakes" / "recorder.py"
 SSH_KEYGEN = Path(__file__).parent / "fakes" / "ssh_keygen.py"
+SUDO = Path(__file__).parent / "fakes" / "sudo.py"
 
 # Fakes that do more than record (they're used under these command names).
-SPECIAL = {"ssh-keygen": SSH_KEYGEN}
+SPECIAL = {"ssh-keygen": SSH_KEYGEN, "sudo": SUDO}
 
 
 class FakeCommands:
@@ -33,7 +34,8 @@ class FakeCommands:
         bin_dir = Path(self._dir.name) / "bin"
         bin_dir.mkdir()
         os.chmod(RECORDER, 0o755)
-        os.chmod(SSH_KEYGEN, 0o755)
+        for script in SPECIAL.values():
+            os.chmod(script, 0o755)
         for name in self.names:
             (bin_dir / name).symlink_to(SPECIAL.get(name, RECORDER))
         self.log = Path(self._dir.name) / "calls.log"

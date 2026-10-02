@@ -49,6 +49,7 @@ class SiteTestCase(unittest.TestCase):
             mock.patch.object(ssh, "SHARED_GITHUB_KEY", self.root_ssh / "cloudpanel_github_ed25519"),
             mock.patch.object(ssh, "HOME", self.home),
             mock.patch.object(node, "HOME", self.home),
+            mock.patch.object(sites, "HOME", self.home),
             mock.patch.object(db, "DB_PATH", self.db_path),
             mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(self.gitconfig)}),
         ]
