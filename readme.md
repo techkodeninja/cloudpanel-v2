@@ -15,8 +15,10 @@ cloudpanel --help
 </pre>
 To update:
 <pre>
-cloudpanel self:update
+cloudpanel self:update            # updates if there's a newer version
+cloudpanel self:update --check    # only checks
 </pre>
+Commands also tell you (at most once a day) when a newer version is out. `CLOUDPANEL_NO_UPDATE_CHECK=1` turns that off.
 
 Requires Python 3.10 or newer (`python3 --version`).
 
@@ -61,7 +63,7 @@ python3 -m cloudpanel --help
 python3 -m unittest
 </pre>
 
-Before committing a change to `cloudpanel/`, rebuild the bundle so `dist/cloudpanel` matches:
+Before committing a change to `cloudpanel/`, raise `__version__` in `cloudpanel/__init__.py` (that's how servers know there's an update) and rebuild the bundle so `dist/cloudpanel` matches:
 <pre>
 ./build.sh
 </pre>
