@@ -2,7 +2,7 @@
 
 Tools and automation on top of CloudPanel's `clpctl`: sites with Let's Encrypt certificates through Cloudflare, WordPress/ClassicPress (including multisite), SSH and GitHub keys for site users, restores, and migrations with automatic backups.
 
-Version 2 is written in Python using only the standard library. A server needs nothing but `python3` (already on Ubuntu), so there's no nvm, no npm and no private key to download it.
+This version is written in Python using only the standard library. A server needs nothing but `python3` (already on Ubuntu), so there's no nvm, no npm and no private key to download it.
 
 It replaces the Node version ([techkodeninja/cloudpanel](https://github.com/techkodeninja/cloudpanel)); every command and option works the same.
 
@@ -72,6 +72,6 @@ cloudpanel self:update --branch=my-branch
 </pre>
 
 ## Releasing
-1. Merge the changes into `main` (with `__version__` raised, e.g. `2.0.2`).
-2. On GitHub: **Releases → Draft a new release → Choose a tag**, type `v2.0.2` (a `v` plus the version), target `main`, **Publish release**.
+1. Merge the changes into `main` (with `__version__` raised, e.g. `1.0.1`).
+2. On GitHub: **Releases → Draft a new release → Choose a tag**, type `v1.0.1` (a `v` plus the version), target `main`, **Publish release**.
 3. The release workflow checks the tag matches the version, runs the tests, and attaches the `cloudpanel` file. When it's done, servers see the update.
