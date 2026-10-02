@@ -16,7 +16,7 @@ To update:
 cloudpanel self:update            # installs the latest release if it's newer
 cloudpanel self:update --check    # only checks
 </pre>
-Servers only get published releases, not every change merged to `main`. Commands also tell you (at most once a day) when a newer release is out. `CLOUDPANEL_NO_UPDATE_CHECK=1` turns that off.
+Servers only get published releases, not every change merged to `develop`. Commands also tell you (at most once a day) when a newer release is out. `CLOUDPANEL_NO_UPDATE_CHECK=1` turns that off.
 
 Requires Python 3.10 or newer (`python3 --version`).
 
@@ -73,11 +73,9 @@ cloudpanel self:update --branch=develop
 </pre>
 
 ## Branches and releasing
-- `develop`: day-to-day work. Pull requests go here.
-- `main`: what has been released.
+All work goes into `develop` (the default branch) through pull requests. Servers only get what you publish as a release.
 
 To release:
-1. Raise `__version__` in `cloudpanel/__init__.py` (e.g. `0.0.2`) in a PR into `develop`.
-2. Open a PR from `develop` into `main` and merge it.
-3. On GitHub: **Releases → Draft a new release → Choose a tag**, type `v0.0.2` (a `v` plus the version), target `main`, **Publish release**.
-4. The release workflow checks the tag matches the version, runs the tests, and attaches the `cloudpanel` file. When it's done, servers see the update.
+1. Raise `__version__` in `cloudpanel/__init__.py` (e.g. `0.0.3`) in a PR into `develop` and merge it.
+2. On GitHub: **Releases → Draft a new release → Choose a tag**, type `v0.0.3` (a `v` plus the version), target `develop`, **Publish release**.
+3. The release workflow checks the tag matches the version, runs the tests, and attaches the `cloudpanel` file. When it's done, servers see the update.

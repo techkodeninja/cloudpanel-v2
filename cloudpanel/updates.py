@@ -1,7 +1,7 @@
 """Knowing when a newer version is out.
 
 A new version is a GitHub release (tag v0.0.1, ...) with the bundled
-program attached as `cloudpanel`. Merging to main alone doesn't reach
+program attached as `cloudpanel`. Merging to develop alone doesn't reach
 servers; publishing a release does.
 """
 
