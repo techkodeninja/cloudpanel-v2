@@ -72,7 +72,7 @@ class MainTest(unittest.TestCase):
         _, out, _ = run_cli("--help")
         for word in out.split():
             if word.count(":") >= 1 and word[0].isalpha() and not word.startswith(("http", "--")):
-                if word.split(":")[0] in ("init", "site", "github", "self"):
+                if word.split(":")[0] in ("init", "site", "github", "self", "cloudflare"):
                     self.assertIn(word, cli.COMMANDS, f"{word} is in the help but not registered")
 
 

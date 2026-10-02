@@ -27,6 +27,7 @@ cloudpanel init:install --cfToken='0123456789abcdef0123456789'
 cloudpanel site:add:php --domainName='amicable.codestacks.cc'
 cloudpanel site:fix:ssh --apply
 cloudpanel github:key
+cloudpanel cloudflare:token          # new token if the old one leaked
 cloudpanel site:update:certificate --domainName='amicable.codestacks.cc'
 cloudpanel site:migration:wordpress --domainName='codestacks.cc' --stagingName='staging.codestacks.cc'
 </pre>
