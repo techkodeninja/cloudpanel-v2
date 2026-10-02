@@ -8,7 +8,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-from cloudpanel import backup
+import io
+
+from cloudpanel import __version__, backup, updates
 from cloudpanel.commands import self_update
 from tests.helpers import FakeCommands
 from tests.test_sites import FAKES, SiteTestCase
@@ -221,37 +223,109 @@ class SelfUpdateTest(SiteTestCase):
         path.write_bytes(b"#!/usr/bin/env python3\n" + data)
         return path.read_bytes()
 
-    def fake_urlopen(self, data):
-        response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = data
-        return mock.patch.object(self_update.urllib.request, "urlopen", return_value=response)
+    def github(self, version, bundle=b""):
+        """Stand-in for GitHub: __init__.py says `version`, dist/cloudpanel is `bundle`."""
+        def urlopen(url, timeout=None):
+            self.urls.append(url)
+            data = f'__version__ = "{version}"\n'.encode() if url.endswith("__init__.py") else bundle
+            response = mock.MagicMock()
+            response.__enter__.return_value.read.return_value = data
+            return response
+        self.urls = []
+        return mock.patch.object(updates.urllib.request, "urlopen", urlopen)
 
-    def test_replaces_itself(self):
+    def test_replaces_itself_when_newer(self):
         target = self.tmp / "cloudpanel"
         self.bundle(target, "1.0.0")
-        new = self.bundle(self.tmp / "new", "9.9.9")
-        with self.fake_urlopen(new) as urlopen, mock.patch.object(sys, "argv", [str(target), "self:update"]):
-            code, out, err = self.cli("self:update", "--branch=step-7-rest")
+        new = self.bundle(self.tmp / "new", "99.0.0")
+        with self.github("99.0.0", new), mock.patch.object(sys, "argv", [str(target), "self:update"]):
+            code, out, err = self.cli("self:update")
         self.assertEqual(code, 0, err)
-        self.assertIn("/step-7-rest/dist/cloudpanel", urlopen.call_args[0][0])
         self.assertEqual(target.read_bytes(), new)
-        self.assertIn("9.9.9", out)
+        self.assertIn("99.0.0", out)
         self.assertEqual([p.name for p in self.tmp.iterdir() if p.name.startswith(".cloudpanel-")], [])
+
+    def test_up_to_date_downloads_nothing(self):
+        with self.github(__version__):
+            code, out, _ = self.cli("self:update")
+        self.assertEqual(code, 0)
+        self.assertIn("Up to date", out)
+        self.assertEqual(len(self.urls), 1)  # only the version number
+
+    def test_check_only(self):
+        target = self.tmp / "cloudpanel"
+        old = self.bundle(target, "1.0.0")
+        with self.github("99.0.0", b"x"), mock.patch.object(sys, "argv", [str(target)]):
+            code, out, _ = self.cli("self:update", "--check")
+        self.assertEqual(code, 0)
+        self.assertIn("99.0.0 is available", out)
+        self.assertEqual(target.read_bytes(), old)
+
+    def test_branch_always_downloads(self):
+        target = self.tmp / "cloudpanel"
+        self.bundle(target, "1.0.0")
+        new = self.bundle(self.tmp / "new", __version__)
+        with self.github(__version__, new), mock.patch.object(sys, "argv", [str(target)]):
+            code, _, err = self.cli("self:update", "--branch=some-branch")
+        self.assertEqual(code, 0, err)
+        self.assertTrue(any("/some-branch/dist/cloudpanel" in url for url in self.urls))
+        self.assertEqual(target.read_bytes(), new)
 
     def test_refuses_a_bad_download(self):
         target = self.tmp / "cloudpanel"
         old = self.bundle(target, "1.0.0")
-        with self.fake_urlopen(b"<html>404</html>"), mock.patch.object(sys, "argv", [str(target)]):
+        with self.github("99.0.0", b"<html>404</html>"), mock.patch.object(sys, "argv", [str(target)]):
             code, _, err = self.cli("self:update")
         self.assertEqual(code, 1)
         self.assertIn("is not a cloudpanel bundle", err)
         self.assertEqual(target.read_bytes(), old)
 
     def test_from_source(self):
-        with mock.patch.object(sys, "argv", ["/nope/cloudpanel/__main__.py"]):
+        with self.github("99.0.0"), mock.patch.object(sys, "argv", ["/nope/cloudpanel/__main__.py"]):
             code, _, err = self.cli("self:update")
         self.assertEqual(code, 1)
         self.assertIn("Running from source", err)
+
+
+class NotifyTest(SiteTestCase):
+    def setUp(self):
+        super().setUp()
+        patches = [mock.patch.object(updates, "STATE_FILE", self.tmp / "state" / "update-check"),
+                   mock.patch.object(updates.sys.stdout, "isatty", return_value=True, create=True)]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def notify(self, latest):
+        calls = []
+
+        def latest_version(timeout=10):
+            calls.append(timeout)
+            return latest
+        out = io.StringIO()
+        with mock.patch.object(updates, "latest_version", latest_version), \
+                mock.patch.object(updates.sys, "stdout", out), mock.patch.object(out, "isatty", return_value=True):
+            updates.notify()
+        return out.getvalue(), calls
+
+    def test_tells_once_a_day(self):
+        out, calls = self.notify("99.0.0")
+        self.assertIn("cloudpanel 99.0.0 is available", out)
+        self.assertEqual(calls, [3])
+        out, calls = self.notify("99.0.0")  # remembered: no second lookup today
+        self.assertIn("99.0.0 is available", out)
+        self.assertEqual(calls, [])
+
+    def test_quiet_when_current_or_offline(self):
+        out, _ = self.notify(__version__)
+        self.assertEqual(out, "")
+        (self.tmp / "state" / "update-check").unlink()
+        with mock.patch.object(updates, "latest_version", side_effect=OSError("offline")):
+            updates.notify()  # no exception
+
+    def test_versions_compare_as_numbers(self):
+        self.assertTrue(updates.is_newer("2.0.10", "2.0.9"))
+        self.assertFalse(updates.is_newer("2.0.1", "2.0.1"))
 
 
 if __name__ == "__main__":

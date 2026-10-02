@@ -3,6 +3,6 @@
 Python standard library only, so a server needs nothing but python3.
 """
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 MIN_PYTHON = (3, 10)

@@ -1,20 +1,20 @@
 """self:update — replace this program with the latest version from GitHub.
 
-    cloudpanel self:update [--branch=main]
+    cloudpanel self:update            update if GitHub has a newer version
+    cloudpanel self:update --check    only say whether there is one
+    cloudpanel self:update --force    download even if the version is the same
+    cloudpanel self:update --branch=x try a branch (always downloads)
 """
 
 import os
 import subprocess
 import sys
 import tempfile
-import urllib.request
 import zipfile
 from pathlib import Path
 
-from .. import __version__, ui
+from .. import __version__, ui, updates
 from ..errors import CloudPanelError
-
-URL = "https://raw.githubusercontent.com/techkodeninja/cloudpanel-v2/{branch}/dist/cloudpanel"
 
 
 def installed_path():
@@ -25,16 +25,24 @@ def installed_path():
 
 def self_update(params, target=None):
     branch = params.get("branch") if isinstance(params.get("branch"), str) else "main"
+
+    if branch == "main" and not params.get("force"):
+        latest = updates.latest_version()
+        if not updates.is_newer(latest):
+            ui.success(f"Up to date (cloudpanel {__version__}).")
+            return
+        if params.get("check"):
+            ui.info(f"cloudpanel {ui.bold(latest)} is available (you have {__version__}). Update: cloudpanel self:update")
+            return
+    elif params.get("check"):
+        ui.info(f"cloudpanel {updates.latest_version(branch)} is on {branch} (you have {__version__}).")
+        return
+
     target = target or installed_path()
     if target is None:
         raise CloudPanelError("Running from source; update with git pull instead.")
 
-    url = URL.format(branch=branch)
-    try:
-        with urllib.request.urlopen(url, timeout=60) as response:
-            data = response.read()
-    except OSError as error:
-        raise CloudPanelError(f"Could not download {url}: {error}") from None
+    data = updates.fetch(branch, "dist/cloudpanel")
 
     # Write next to the target, check it runs, then swap it in one step.
     fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".cloudpanel-")
@@ -44,7 +52,7 @@ def self_update(params, target=None):
             file.write(data)
         os.chmod(tmp, 0o755)
         if not data.startswith(b"#!") or not zipfile.is_zipfile(tmp):
-            raise CloudPanelError(f"{url} is not a cloudpanel bundle.")
+            raise CloudPanelError(f"The download from {branch} is not a cloudpanel bundle.")
         check = subprocess.run([sys.executable, str(tmp), "--version"], capture_output=True, text=True,
                                stdin=subprocess.DEVNULL, timeout=60)
         if check.returncode != 0:

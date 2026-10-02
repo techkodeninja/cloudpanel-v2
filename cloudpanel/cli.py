@@ -97,7 +97,8 @@ cloudpanel site:restore:classicpress --domainName='domain.com' --backupFile='htt
 cloudpanel site:restore:wordpress --domainName='domain.com' --backupFile='https://downloads.domain.com/backup.tar'
 
 {h('update')}
-cloudpanel self:update                                    {note('(download the latest version of this tool)')}
+cloudpanel self:update                                    {note('(update if there is a newer version)')}
+cloudpanel self:update --check                            {note('(only check)')}
 
 {version_line}
 """
@@ -134,6 +135,9 @@ def main(argv):
 
     try:
         function(params)
+        if command != "self:update":
+            from . import updates
+            updates.notify()
     except CloudPanelError as error:
         ui.fail(str(error))
         return 1
