@@ -20,6 +20,7 @@ COMMANDS = {
     "site:fix:ssh": "fix_ssh:fix_ssh",
     "github:key": "github_key:show",
     "github:key:rotate": "github_key:rotate",
+    "cloudflare:token": "cloudflare:token",
     "site:install:certificate": "certificate:install",
     "site:update:certificate": "certificate:update",
     "site:migration:classicpress": "migrate:wordpress",
@@ -79,6 +80,9 @@ cloudpanel site:fix:ssh --domainName='domain.com' --apply
 {h('github')}
 cloudpanel github:key                                     {github_show}
 cloudpanel github:key:rotate                              {note('(replace it with a new key on every site)')}
+
+{h('cloudflare')}
+cloudpanel cloudflare:token                               {note('(replace the saved token; asks for it, checks it first)')}
 
 {h('certificate')}
 cloudpanel site:install:certificate --domainName='domain.com'
