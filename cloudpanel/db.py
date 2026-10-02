@@ -3,12 +3,19 @@
 import sqlite3
 from pathlib import Path
 
+from .errors import CloudPanelError
+
 DB_PATH = Path("/home/clp/htdocs/app/data/db.sq3")
 
 
 def _connect(read_only=True):
+    if not DB_PATH.exists():
+        raise CloudPanelError(f"CloudPanel's database ({DB_PATH}) wasn't found. Is CloudPanel installed? (cloudpanel init:install)")
     mode = "ro" if read_only else "rw"
-    return sqlite3.connect(f"file:{DB_PATH}?mode={mode}", uri=True)
+    try:
+        return sqlite3.connect(f"file:{DB_PATH}?mode={mode}", uri=True)
+    except sqlite3.Error as error:
+        raise CloudPanelError(f"Could not open CloudPanel's database: {error}") from None
 
 
 def list_sites():

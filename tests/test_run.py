@@ -61,7 +61,7 @@ class AsSiteUserTest(unittest.TestCase):
         os.makedirs(home, exist_ok=True)
         try:
             with FakeCommands("sudo") as fakes:
-                run.as_site_user("cp-test-site-user", ["git", "config", "--global", "--get", "user.name"])
+                run.as_site_user("cp-test-site-user", ["true"])
             self.assertEqual(fakes.calls[0]["cwd"], home)
         finally:
             os.rmdir(home)

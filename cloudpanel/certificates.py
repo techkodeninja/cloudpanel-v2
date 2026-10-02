@@ -67,13 +67,15 @@ def install_site_certificate(domain):
         return False
 
 
-def find_site_certificate(domain, vhost_dir=Path("/etc/nginx/sites-enabled"), cert_dir=None):
+def find_site_certificate(domain, vhost_dir=None, cert_dir=None):
     """Path of the certificate nginx serves for exactly this site, or None.
 
     Read from the site's vhost (ssl_certificate ...;), falling back to a file
     named exactly <domain>.crt/.cert/.pem. Never matches another site
     (blog.example.com is not example.com).
     """
+    from . import sites  # the nginx folder, patchable in one place
+    vhost_dir = vhost_dir or sites.NGINX_SITES
     cert_dir = cert_dir or NGINX_CERTIFICATES
     try:
         vhost = (vhost_dir / f"{domain}.conf").read_text()

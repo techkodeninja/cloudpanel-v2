@@ -5,6 +5,12 @@ from pathlib import Path
 from .errors import UsageError
 
 NGINX_SITES = Path("/etc/nginx/sites-enabled")
+HOME = Path("/home")
+
+
+def htdocs(user, domain):
+    """Where a site's files live."""
+    return HOME / user / "htdocs" / domain
 
 
 def site_username(domain):
