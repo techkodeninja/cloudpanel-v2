@@ -1,6 +1,7 @@
 """Let's Encrypt certificates through Cloudflare DNS, installed on sites."""
 
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import ui
@@ -89,3 +90,14 @@ def find_site_certificate(domain, vhost_dir=None, cert_dir=None):
         if candidate.exists():
             return candidate
     return None
+
+
+def expiry_date(path):
+    """When the certificate at `path` expires (UTC datetime), or None if it
+    is missing or unreadable."""
+    try:
+        output = run(["openssl", "x509", "-enddate", "-noout", "-in", path])
+        expiry = datetime.strptime(output.strip().split("=", 1)[1], "%b %d %H:%M:%S %Y %Z")
+    except (CloudPanelError, ValueError, IndexError):
+        return None
+    return expiry.replace(tzinfo=timezone.utc)

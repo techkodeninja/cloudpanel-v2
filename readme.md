@@ -4,9 +4,7 @@ Tools and automation on top of CloudPanel's `clpctl`: sites with Let's Encrypt c
 
 Version 2 is written in Python using only the standard library. A server needs nothing but `python3` (already on Ubuntu), so there's no nvm, no npm and no private key to download it.
 
-> **Status:** being ported from the Node version ([techkodeninja/cloudpanel](https://github.com/techkodeninja/cloudpanel)). Commands that aren't ported yet say so; use the Node version for those until they are.
->
-> Ported so far: `init:install`, `site:add:php`, `site:add:static`, `site:add:reverse-proxy`, `site:add:wordpress`, `site:add:classicpress`, `site:list`, `site:delete`, `site:fix:ssh`, `github:key`, `github:key:rotate`.
+It replaces the Node version ([techkodeninja/cloudpanel](https://github.com/techkodeninja/cloudpanel)); every command and option works the same.
 
 ## Install
 On a fresh Ubuntu (22.04, 24.04 or 26.04) or Debian (12, 13) server, as root:
@@ -15,17 +13,22 @@ curl -fsSL https://raw.githubusercontent.com/techkodeninja/cloudpanel-v2/main/di
 chmod +x /usr/local/bin/cloudpanel
 cloudpanel --help
 </pre>
-To update, run the same two lines again.
+To update:
+<pre>
+cloudpanel self:update
+</pre>
 
 Requires Python 3.10 or newer (`python3 --version`).
 
 ## Usage
-Run `cloudpanel` to see every command. The commands and options are the same as the Node version, for example:
+Run `cloudpanel` to see every command. For example:
 <pre>
 cloudpanel init:install --cfToken='0123456789abcdef0123456789'
 cloudpanel site:add:php --domainName='amicable.codestacks.cc'
 cloudpanel site:fix:ssh --apply
 cloudpanel github:key
+cloudpanel site:update:certificate --domainName='amicable.codestacks.cc'
+cloudpanel site:migration:wordpress --domainName='codestacks.cc' --stagingName='staging.codestacks.cc'
 </pre>
 
 ## Files on the server

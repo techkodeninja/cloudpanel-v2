@@ -30,3 +30,8 @@ if command[:3] == ["git", "config", "--global"]:
         sys.exit(1)  # git exits 1 when the key isn't set
     store[rest[0]] = rest[1]
     json.dump(store, open(store_path, "w"))
+
+elif command[:3] == ["wp", "config", "get"]:
+    # wp config get KEY: answer from $CP_FAKE_WP_<KEY> (per site user: $CP_FAKE_WP_<KEY>_<user>)
+    key = command[3]
+    print(os.environ.get(f"CP_FAKE_WP_{key}_{user}", os.environ.get(f"CP_FAKE_WP_{key}", "")))
