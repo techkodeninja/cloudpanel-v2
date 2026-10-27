@@ -1,0 +1,21 @@
+# Runs the tests on every pull request, on the oldest Python servers use
+# (3.10, Ubuntu 22.04) and the newest, so a problem shows up before merging.
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python3 -m unittest < /dev/null
