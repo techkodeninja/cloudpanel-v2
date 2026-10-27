@@ -20,11 +20,19 @@ PROBLEMS = {
     "missing_login": "missing your login key",
     "missing_git": "no git name/email",
     "not_shared": "not on the shared GitHub key",
+    "unsafe": "symlink or odd file in ~/.ssh (possible break-in; check it by hand)",
 }
 
 
 def check(site, login_keys, root_git):
     user = site["user"]
+    try:
+        return _check(user, login_keys, root_git)
+    except ssh.UnsafeSshFolder:
+        return ["unsafe"]
+
+
+def _check(user, login_keys, root_git):
     problems = []
     if ssh.has_root_key_copy(user):
         problems.append("root_copy")
@@ -39,6 +47,10 @@ def check(site, login_keys, root_git):
 
 def fix(site, problems):
     user, domain = site["user"], site["domain"]
+    if "unsafe" in problems:
+        ui.fail(f"Skipped {domain}: /home/{user}/.ssh holds a symlink or a file that isn't a plain file. "
+                f"Look at it (ls -la /home/{user}/.ssh), remove what you didn't put there, then run this again.")
+        return
     if "missing_login" in problems or "root_copy" in problems:
         ssh.add_login_keys(user, domain)
     if "missing_git" in problems:

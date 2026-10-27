@@ -33,7 +33,14 @@ def rotate(params):
 
     had_key = _pub().exists()
     old_fingerprint = ssh.fingerprint(_pub()) if had_key else None
-    on_old_key = [s for s in sites if had_key and ssh.uses_shared_github_key(s["user"])]
+    def on_shared_key(site):
+        try:
+            return ssh.uses_shared_github_key(site["user"])
+        except ssh.UnsafeSshFolder as error:
+            ui.fail(f"{site['domain']}: {error}")
+            return False
+
+    on_old_key = [s for s in sites if had_key and on_shared_key(s)]
     others = [s for s in sites if s not in on_old_key]
 
     # Replace the key; the old private key is deleted so it can't be reused.
