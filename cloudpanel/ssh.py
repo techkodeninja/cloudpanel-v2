@@ -6,12 +6,21 @@ Each site user gets:
   - GitHub: a copy of the server's shared GitHub key, so every site can pull
     and push your repos once that one key is on your GitHub account.
 Root's own private key is never copied to a site.
+
+A site user (or anyone who breaks into one of its sites) controls
+/home/<user>/.ssh, so root never follows a symlink there: every file is
+opened relative to the folder with O_NOFOLLOW, and anything that isn't a
+plain file (a symlink, hard link or FIFO) stops the step with an error.
+Otherwise a planted link such as id_ed25519.pub -> /etc/shadow would make
+root overwrite that file.
 """
 
+import contextlib
+import errno
 import os
 import re
-import shutil
 import socket
+import stat
 from pathlib import Path
 
 from . import db, ui
@@ -53,13 +62,121 @@ def _read(path):
         return None
 
 
-def ssh_dir(user):
-    """/home/<user>/.ssh, created if needed, 0700 and owned by the user."""
-    path = HOME / user / ".ssh"
-    path.mkdir(parents=True, exist_ok=True)
-    os.chmod(path, 0o700)
-    run(["chown", "-R", f"{user}:{user}", path])
-    return path
+class UnsafeSshFolder(CloudPanelError):
+    """A site's ~/.ssh holds a symlink or other non-plain file."""
+
+
+_DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+
+def _refuse(path, what):
+    return UnsafeSshFolder(f"{path} is {what}, not a plain file or folder; refusing to touch it. "
+                           f"If you didn't create it, the site may have been broken into.")
+
+
+def _open_dir(name, *, dir_fd=None, path):
+    try:
+        return os.open(name, _DIR_FLAGS, dir_fd=dir_fd)
+    except OSError as error:
+        if error.errno in (errno.ELOOP, errno.ENOTDIR):
+            raise _refuse(path, "a symlink") from None
+        raise
+
+
+@contextlib.contextmanager
+def site_ssh_dir(user, create=True):
+    """File descriptor of /home/<user>/.ssh, opened without following
+    symlinks. create=True makes it (0700) if needed; create=False yields None
+    when it doesn't exist and changes nothing."""
+    home = HOME / user
+    if create and not os.path.lexists(home):
+        home.mkdir(parents=True)  # /home is root's, so nobody else can race this
+    try:
+        home_fd = _open_dir(str(home), path=home)
+    except FileNotFoundError:
+        if create:
+            raise
+        yield None
+        return
+    try:
+        if create:
+            try:
+                os.mkdir(".ssh", 0o700, dir_fd=home_fd)
+            except FileExistsError:
+                pass
+        try:
+            fd = _open_dir(".ssh", dir_fd=home_fd, path=home / ".ssh")
+        except FileNotFoundError:
+            if create:
+                raise
+            fd = None
+    finally:
+        os.close(home_fd)
+    if fd is None:
+        yield None
+        return
+    try:
+        if create:
+            os.fchmod(fd, 0o700)
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def _check_plain(fd, path):
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode):
+        raise _refuse(path, "not a regular file")
+    if info.st_nlink != 1:
+        raise _refuse(path, "a hard link")
+
+
+def read_site_file(dir_fd, name, path):
+    """Contents of <dir>/<name>, or None if missing. Never follows a symlink."""
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=dir_fd)
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        if error.errno == errno.ELOOP:
+            raise _refuse(path, "a symlink") from None
+        raise
+    with os.fdopen(fd, "r") as handle:
+        _check_plain(fd, path)
+        return handle.read()
+
+
+def write_site_file(dir_fd, name, content, mode, path, *, append=False):
+    """Write <dir>/<name> with `mode`, never through a symlink or hard link."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+    try:
+        fd = os.open(name, flags, 0o600, dir_fd=dir_fd)
+    except OSError as error:
+        if error.errno in (errno.ELOOP, errno.ENXIO):
+            raise _refuse(path, "a symlink" if error.errno == errno.ELOOP else "not a regular file") from None
+        raise
+    with os.fdopen(fd, "w") as handle:
+        _check_plain(fd, path)  # before changing anything in it
+        if append:
+            handle.seek(0, os.SEEK_END)
+        else:
+            os.ftruncate(fd, 0)
+        handle.write(content)
+        os.fchmod(fd, mode)
+
+
+def _read_site(user, name):
+    """A file in the site's ~/.ssh, or None if it (or the folder) is missing."""
+    with site_ssh_dir(user, create=False) as fd:
+        if fd is None:
+            return None
+        return read_site_file(fd, name, HOME / user / ".ssh" / name)
+
+
+def _chown_ssh(user):
+    # -h: change links themselves, never what they point to (and -R doesn't
+    # follow them while walking the folder).
+    run(["chown", "-R", "-h", f"{user}:{user}", HOME / user / ".ssh"])
 
 
 # --- login keys ---------------------------------------------------------------
@@ -83,25 +200,24 @@ def read_login_keys(files=None):
 
 def add_authorized_keys(user, keys):
     """Add keys to the user's authorized_keys (deduped). Returns how many were added."""
-    directory = ssh_dir(user)
-    auth = directory / "authorized_keys"
-    lines = [line.strip() for line in (_read(auth) or "").splitlines() if line.strip()]
-    have = {key_identity(line) for line in lines}
-    added = 0
-    for key in keys:
-        if key and key_identity(key) not in have:
-            lines.append(key.strip())
-            have.add(key_identity(key))
-            added += 1
-    auth.write_text("\n".join(lines) + ("\n" if lines else ""))
-    os.chmod(auth, 0o600)
-    run(["chown", "-R", f"{user}:{user}", directory])
+    with site_ssh_dir(user) as directory:
+        auth = HOME / user / ".ssh" / "authorized_keys"
+        lines = [line.strip() for line in (read_site_file(directory, "authorized_keys", auth) or "").splitlines() if line.strip()]
+        have = {key_identity(line) for line in lines}
+        added = 0
+        for key in keys:
+            if key and key_identity(key) not in have:
+                lines.append(key.strip())
+                have.add(key_identity(key))
+                added += 1
+        write_site_file(directory, "authorized_keys", "\n".join(lines) + ("\n" if lines else ""), 0o600, auth)
+    _chown_ssh(user)
     return added
 
 
 def missing_login_keys(user, login_keys=None):
     login_keys = read_login_keys() if login_keys is None else login_keys
-    have = {key_identity(line) for line in (_read(HOME / user / ".ssh" / "authorized_keys") or "").splitlines() if line.strip()}
+    have = {key_identity(line) for line in (_read_site(user, "authorized_keys") or "").splitlines() if line.strip()}
     return [key for key in login_keys if key_identity(key) not in have]
 
 
@@ -129,11 +245,10 @@ def add_login_keys(user, domain):
 
 def has_root_key_copy(user):
     """True if the site's ~/.ssh/id_ed25519 is a copy of root's own key."""
-    key_file = HOME / user / ".ssh" / "id_ed25519"
-    site_pub, root_pub = _read(f"{key_file}.pub"), _read(ROOT_PUBLIC_KEY)
+    site_pub, root_pub = _read_site(user, "id_ed25519.pub"), _read(ROOT_PUBLIC_KEY)
     if site_pub and root_pub and key_identity(site_pub) == key_identity(root_pub):
         return True
-    site_priv, root_priv = _read(key_file), _read(ROOT_PRIVATE_KEY)
+    site_priv, root_priv = _read_site(user, "id_ed25519"), _read(ROOT_PRIVATE_KEY)
     return bool(site_priv and root_priv and site_priv.strip() == root_priv.strip())
 
 
@@ -166,29 +281,29 @@ def fingerprint(pub_file):
 
 
 def uses_shared_github_key(user):
-    site = _read(HOME / user / ".ssh" / "id_ed25519.pub")
+    site = _read_site(user, "id_ed25519.pub")
     shared = _read(f"{SHARED_GITHUB_KEY}.pub")
     return bool(site and shared and key_identity(site) == key_identity(shared))
 
 
 def install_shared_github_key(user):
     """Copy the shared key into the user's ~/.ssh as id_ed25519 and trust GitHub."""
-    directory = ssh_dir(user)
-    key_file = directory / "id_ed25519"
-    shutil.copyfile(SHARED_GITHUB_KEY, key_file)
-    os.chmod(key_file, 0o600)
-    shutil.copyfile(f"{SHARED_GITHUB_KEY}.pub", f"{key_file}.pub")
-    os.chmod(f"{key_file}.pub", 0o644)
+    private_key = SHARED_GITHUB_KEY.read_text()
+    public_key = Path(f"{SHARED_GITHUB_KEY}.pub").read_text()
+    folder = HOME / user / ".ssh"
+    with site_ssh_dir(user) as directory:
+        write_site_file(directory, "id_ed25519", private_key, 0o600, folder / "id_ed25519")
+        write_site_file(directory, "id_ed25519.pub", public_key, 0o644, folder / "id_ed25519.pub")
 
-    known_hosts = directory / "known_hosts"
-    current = _read(known_hosts) or ""
-    missing = [line for line in GITHUB_KNOWN_HOSTS if line not in current]
-    if missing:
-        prefix = "\n" if current and not current.endswith("\n") else ""
-        with open(known_hosts, "a") as handle:
-            handle.write(prefix + "\n".join(missing) + "\n")
-    os.chmod(known_hosts, 0o644)
-    run(["chown", "-R", f"{user}:{user}", directory])
+        current = read_site_file(directory, "known_hosts", folder / "known_hosts") or ""
+        missing = [line for line in GITHUB_KNOWN_HOSTS if line not in current]
+        if missing:
+            prefix = "\n" if current and not current.endswith("\n") else ""
+            write_site_file(directory, "known_hosts", prefix + "\n".join(missing) + "\n", 0o644,
+                            folder / "known_hosts", append=True)
+        else:
+            write_site_file(directory, "known_hosts", "", 0o644, folder / "known_hosts", append=True)
+    _chown_ssh(user)
 
 
 def print_shared_key_instructions(title="New shared GitHub key for this server"):
