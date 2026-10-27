@@ -13,8 +13,14 @@ import sys
 
 args = sys.argv[1:]
 log_path = os.environ["CP_TEST_LOG"]
+stdin = ""
+if not sys.stdin.isatty():
+    try:
+        stdin = sys.stdin.read()  # e.g. a file written with tee
+    except OSError:
+        stdin = ""
 with open(log_path, "a") as log:
-    log.write(json.dumps({"argv": ["sudo", *args], "cwd": os.getcwd(), "stdin": ""}) + "\n")
+    log.write(json.dumps({"argv": ["sudo", *args], "cwd": os.getcwd(), "stdin": stdin}) + "\n")
 
 user = args[args.index("-u") + 1] if "-u" in args else "root"
 command = args[args.index("-H") + 1:] if "-H" in args else args
@@ -35,3 +41,8 @@ elif command[:3] == ["wp", "config", "get"]:
     # wp config get KEY: answer from $CP_FAKE_WP_<KEY> (per site user: $CP_FAKE_WP_<KEY>_<user>)
     key = command[3]
     print(os.environ.get(f"CP_FAKE_WP_{key}_{user}", os.environ.get(f"CP_FAKE_WP_{key}", "")))
+
+elif command[:3] == ["wp", "option", "get"]:
+    # wp option get NAME: answer from $CP_FAKE_WP_OPTION_<NAME> (per site user: ..._<user>)
+    key = command[3]
+    print(os.environ.get(f"CP_FAKE_WP_OPTION_{key}_{user}", os.environ.get(f"CP_FAKE_WP_OPTION_{key}", "")))
