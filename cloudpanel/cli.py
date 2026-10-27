@@ -91,7 +91,7 @@ cloudpanel cloudflare:token                               {note('(replace the sa
 
 {h('panel')}
 cloudpanel panel:domain --domainName='panel.domain.com'
-{note('  The CloudPanel admin at https://panel.domain.com (Let\'s Encrypt through Cloudflare, renewed automatically).')}
+{note("  The CloudPanel admin at https://panel.domain.com (Let's Encrypt through Cloudflare, renewed automatically).")}
 {note('  Needs a DNS record for it in Cloudflare. https://<server-ip>:8443 keeps working.')}
 
 {h('certificate')}
