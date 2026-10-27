@@ -29,6 +29,7 @@ cloudpanel site:fix:ssh --apply
 cloudpanel github:key
 cloudpanel cloudflare:token          # new token if the old one leaked
 cloudpanel site:update:certificate --domainName='amicable.codestacks.cc'
+cloudpanel site:update:certificates  # every site whose certificate is older than its Let's Encrypt one
 cloudpanel site:migration:wordpress --domainName='codestacks.cc' --stagingName='staging.codestacks.cc'
 </pre>
 
@@ -41,6 +42,9 @@ The tool keeps per-server settings on the server, never in this repo:
 | `/root/.cloudflare/admin` | generated CloudPanel admin login (root-only) |
 | `/root/.ssh/cloudpanel_github_ed25519` | shared GitHub key copied to sites |
 | `/root/cloudpanel-backups/` | backups made before migrations |
+| `/etc/letsencrypt/renewal-hooks/deploy/cloudpanel` | after Certbot renews a certificate, puts it on the sites that use it |
+
+Certbot renews certificates on its own, but CloudPanel serves its own copy of each one. The hook above (installed by `init:install`, by adding a site, and by `site:update:certificates`) runs `cloudpanel site:update:certificates` after every renewal so sites get the new certificate.
 
 ## Development
 <pre>

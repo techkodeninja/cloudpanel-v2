@@ -2,7 +2,8 @@
 
     cloudpanel init:install --cfToken='...' [--installerSha256=<hash>]
 
-1. Installs Certbot and its Cloudflare DNS plugin (snap).
+1. Installs Certbot and its Cloudflare DNS plugin (snap), and a hook so
+   renewed certificates go onto the sites that use them.
 2. Saves the Cloudflare API token to /root/.cloudflare/token (root-only).
 3. Downloads the CloudPanel installer, checks its SHA-256 against the value
    CloudPanel publishes, and only then runs it.
@@ -18,7 +19,7 @@ import urllib.request
 from datetime import date
 from pathlib import Path
 
-from .. import system, ui
+from .. import certificates, system, ui
 from ..errors import CloudPanelError
 from ..run import clpctl, command_exists, run
 
@@ -47,6 +48,7 @@ def install(params):
         raise CloudPanelError("--installerSha256 needs a value: --installerSha256=<hash>")
 
     install_certbot()
+    certificates.ensure_renewal_hook()
     save_cloudflare_token(cf_token)
 
     if command_exists("clpctl"):

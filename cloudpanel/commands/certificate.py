@@ -5,12 +5,19 @@
     cloudpanel site:update:certificate --domainName=example.com
         If the site's certificate is missing or expires within 30 days, install
         the current Let's Encrypt one (certbot renews that one itself).
+    cloudpanel site:update:certificates [--certName=example.com]
+        Every site (or every site on one certificate) whose installed
+        certificate is older than its Let's Encrypt one gets the new one.
+        Certbot runs this itself after each renewal, through a hook in
+        /etc/letsencrypt/renewal-hooks/deploy/ that this command installs.
 """
 
+import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 
-from .. import certificates, ui
+from .. import certificates, db, ui
 from ..errors import CloudPanelError, UsageError
 from ..run import clpctl
 from ..sites import require
@@ -55,6 +62,7 @@ def install(params):
 
 def update(params):
     domain = _domain(params)
+    certificates.ensure_renewal_hook()
     name, _ = certificates.certificate_for(domain)
     live = certificates.LETSENCRYPT_LIVE / name
     key, cert, chain = live / "privkey.pem", live / "fullchain.pem", live / "chain.pem"
@@ -86,3 +94,68 @@ def update(params):
     except CloudPanelError as error:
         raise CloudPanelError(f"Could not install the certificate on {domain}: {error}") from None
     ui.success(f"Certificate for {ui.bold(domain)} has been updated.")
+
+
+def _install_from(domain, live):
+    clpctl([
+        "site:install:certificate",
+        f"--domainName={domain}",
+        f"--privateKey={live / 'privkey.pem'}",
+        f"--certificate={live / 'fullchain.pem'}",
+        f"--certificateChain={live / 'chain.pem'}",
+    ])
+
+
+def update_all(params):
+    """site:update:certificates; also what certbot's deploy hook runs."""
+    cert_name = params.get("certName")
+    if cert_name is True:
+        raise UsageError("--certName needs a value: --certName=example.com")
+    if not cert_name and os.environ.get("RENEWED_LINEAGE"):
+        cert_name = Path(os.environ["RENEWED_LINEAGE"]).name  # set by certbot
+
+    certificates.ensure_renewal_hook()
+
+    sites = db.list_sites()
+    if cert_name:
+        sites = [s for s in sites if certificates.certificate_for(s["domain"])[0] == cert_name]
+        if not sites:
+            ui.info(f"No CloudPanel site uses the {cert_name} certificate; nothing to do.")
+            return
+
+    updated, current, failed = [], [], []
+    for site in sites:
+        domain = site["domain"]
+        name, _ = certificates.certificate_for(domain)
+        live = certificates.LETSENCRYPT_LIVE / name
+        if not (live / "fullchain.pem").exists():
+            ui.note(f"{domain}: no Let's Encrypt certificate ({name}); skipped.")
+            continue
+
+        new_expiry = certificates.expiry_date(live / "fullchain.pem")
+        if new_expiry is None:
+            ui.fail(f"{domain}: can't read {live / 'fullchain.pem'}.")
+            failed.append(domain)
+            continue
+        installed = certificates.find_site_certificate(domain)
+        old_expiry = certificates.expiry_date(installed) if installed else None
+        # Only ever move forward: a site whose certificate lasts as long or
+        # longer (e.g. a Cloudflare origin certificate) is left alone.
+        if old_expiry and old_expiry >= new_expiry:
+            current.append(domain)
+            continue
+
+        try:
+            _install_from(domain, live)
+        except CloudPanelError as error:
+            ui.fail(f"{domain}: could not install the renewed certificate: {error}")
+            failed.append(domain)
+            continue
+        updated.append(domain)
+        ui.success(f"{ui.bold(domain)} now has the certificate valid until {new_expiry.strftime('%Y-%m-%d')}.")
+
+    summary = f"{len(updated)} updated, {len(current)} already current"
+    if failed:
+        ui.fail(f"{summary}, {len(failed)} failed: {', '.join(failed)}")
+    else:
+        ui.success(f"{summary}.")
