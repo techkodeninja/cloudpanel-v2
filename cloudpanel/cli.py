@@ -27,6 +27,7 @@ COMMANDS = {
     "site:migration:classicpress": "migrate:wordpress",
     "site:migration:novaris": "migrate:novaris",
     "site:migration:wordpress": "migrate:wordpress",
+    "site:staging:create": "staging:create",
     "site:restore:classicpress": "restore:restore_classicpress",
     "site:restore:wordpress": "restore:restore_wordpress",
     "self:update": "self_update:self_update",
@@ -93,11 +94,17 @@ cloudpanel site:update:certificates [--certName='domain.com']
 {cert_note}
 {certs_note}
 
+{h('staging')}
+cloudpanel site:staging:create --domainName='domain.com' [--stagingName='staging.domain.com']
+{note('  Copies a WordPress/ClassicPress site to staging.domain.com (created the first time). Only people')}
+{note('  logged in to WordPress can see it, search engines skip it, and it never sends email.')}
+
 {h('migration')}
 cloudpanel site:migration:classicpress --domainName='domain.com' --stagingName='staging.domain.com'
 cloudpanel site:migration:novaris --domainName='domain.com' --stagingName='staging.domain.com'
 cloudpanel site:migration:wordpress --domainName='domain.com' --stagingName='staging.domain.com'
 {note('  Backs up domain.com to /root/cloudpanel-backups/ and asks you to type the domain first.')}
+{note('  --filesOnly (wordpress/classicpress): themes and plugins only; keeps the live database and uploads.')}
 {note('  --yes skips the question (for scripts).')}
 
 {h('restore')}

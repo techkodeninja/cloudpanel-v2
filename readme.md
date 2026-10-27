@@ -33,6 +33,19 @@ cloudpanel site:update:certificates  # every site whose certificate is older tha
 cloudpanel site:migration:wordpress --domainName='codestacks.cc' --stagingName='staging.codestacks.cc'
 </pre>
 
+## Staging (WordPress and ClassicPress)
+<pre>
+cloudpanel site:staging:create --domainName='codestacks.cc'
+cloudpanel site:migration:wordpress --domainName='codestacks.cc' --stagingName='staging.codestacks.cc' --filesOnly
+</pre>
+1. `site:staging:create` copies the live site's files and database to `staging.codestacks.cc`, creating that site the first time. Run it again any time for a fresh copy.
+2. The copy is private: only people logged in to WordPress can see it (use your live site's login), search engines are told to skip it, and it never sends email.
+3. Make your changes on staging, then push them live with `site:migration:wordpress`. The live site is backed up first.
+   - `--filesOnly` copies only themes and plugins. The live database and uploads are kept, so orders, comments, sign-ups and images added since the copy stay.
+   - Without it, the live database and all of `wp-content` are replaced with staging's. Only do this when nothing on the live site has changed since the copy.
+
+Multisite networks aren't supported by `site:staging:create` yet.
+
 ## Files on the server
 The tool keeps per-server settings on the server, never in this repo:
 

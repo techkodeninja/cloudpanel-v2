@@ -151,7 +151,8 @@ class MigrationTest(SiteTestCase):
         self.assertIn(["tar", "-czf", f"{backup_dir}/wp-content.tar.gz", "-C", str(self.prod), "wp-content"], argvs)
         export = next(a for a in argvs if a[:3] == ["clpctl", "db:export", "--databaseName=example-staging"])
         dump = export[3].split("=", 1)[1]
-        self.assertIn(["rsync", "-az", "--delete", "--chown=example:example", f"{self.stage}/wp-content/", f"{self.prod}/wp-content"], argvs)
+        self.assertIn(["rsync", "-az", "--delete", "--chown=example:example", "--exclude=/mu-plugins/cloudpanel-staging.php",
+                       f"{self.stage}/wp-content/", f"{self.prod}/wp-content"], argvs)
         order = [a[:2] if a[0] == "clpctl" else a[4:7] for a in argvs if a[0] == "clpctl" or a[4:5] == ["wp"]]
         self.assertLess(order.index(["wp", "db", "reset"]), order.index(["clpctl", "db:import"]))
         self.assertIn(["clpctl", "db:import", "--databaseName=example", f"--file={dump}"], argvs)

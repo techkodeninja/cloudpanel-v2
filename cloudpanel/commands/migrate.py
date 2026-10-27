@@ -1,10 +1,19 @@
 """site:migration:wordpress, site:migration:classicpress and site:migration:novaris.
 
-    cloudpanel site:migration:wordpress --domainName=example.com --stagingName=staging.example.com [--yes]
+    cloudpanel site:migration:wordpress --domainName=example.com --stagingName=staging.example.com
+        [--filesOnly] [--yes]
 
 Copies a staging site over its production site. Production is backed up to
 /root/cloudpanel-backups/<domain>/<time>/ first, and you must type the
 production domain to go ahead (or pass --yes).
+
+--filesOnly copies themes, plugins, mu-plugins and languages and leaves the
+live database and uploads alone, so orders, comments, sign-ups and images
+added on the live site since the staging copy are kept. Without it the
+live database and all of wp-content are replaced with staging's.
+
+The staging guard (site:staging:create) is never copied, and the live
+site's "search engine visibility" setting is kept.
 """
 
 import shutil
@@ -13,6 +22,7 @@ import tempfile
 from pathlib import Path
 
 from .. import backup, ui
+from .staging import GUARD_NAME
 from ..errors import CloudPanelError, UsageError
 from ..run import as_site_user, clpctl, run
 from ..sites import htdocs, require, site_username
@@ -47,9 +57,40 @@ def _failed(domain, backup_dir, error):
     return CloudPanelError(f"Migration failed: {error}\n{where}")
 
 
+CODE_FOLDERS = ("themes", "plugins", "mu-plugins", "languages")
+
+
+def _sync_code(stage, prod, prod_user):
+    """--filesOnly: the code folders of wp-content, not uploads."""
+    for folder in CODE_FOLDERS:
+        if (stage / "wp-content" / folder).is_dir():
+            run(["rsync", "-az", "--delete", f"--chown={prod_user}:{prod_user}", f"--exclude=/{GUARD_NAME}",
+                 f"{stage}/wp-content/{folder}/", f"{prod}/wp-content/{folder}"])
+
+
+def _files_only(domain, staging, prod_user, staging_user, prod, stage):
+    backup_dir = None
+    try:
+        backup_dir = backup.backup_site(domain, folders=[prod / "wp-content"])
+        ui.success(f"Backed up {ui.bold(domain)}'s wp-content to {ui.bold(backup_dir)}")
+        _sync_code(stage, prod, prod_user)
+        ui.success(f"Copied {', '.join(CODE_FOLDERS)} from {ui.bold(staging)} to {ui.bold(domain)}.")
+        as_site_user(prod_user, ["wp", "cache", "flush", f"--path={prod}"])
+        ui.success(f"{ui.bold(domain)} now runs {staging}'s themes and plugins; its database and uploads are unchanged.")
+        ui.note("If a plugin was updated, visit wp-admin once in case it asks to update its database.")
+    except (CloudPanelError, OSError) as error:
+        raise _failed(domain, backup_dir, error) from None
+
+
 def wordpress(params):
     """WordPress / ClassicPress: wp-content, then the database, then URLs."""
     domain, staging, prod_user, staging_user, prod, stage = _sites(params)
+    if params.get("filesOnly"):
+        what = (f"This replaces {ui.bold(domain)}'s themes and plugins with {ui.bold(staging)}'s. "
+                f"Its database and uploads are kept.")
+        if _confirm(params, domain, what):
+            _files_only(domain, staging, prod_user, staging_user, prod, stage)
+        return
     if not _confirm(params, domain, f"This replaces {ui.bold(domain)}'s database and wp-content with {ui.bold(staging)}'s."):
         return
 
@@ -69,14 +110,19 @@ def wordpress(params):
         clpctl(["db:export", f"--databaseName={staging_db}", f"--file={dump}"])
         ui.success(f"Exported the database from {ui.bold(staging)}.")
 
-        run(["rsync", "-az", "--delete", f"--chown={prod_user}:{prod_user}", f"{stage}/wp-content/", f"{prod}/wp-content"])
+        run(["rsync", "-az", "--delete", f"--chown={prod_user}:{prod_user}", f"--exclude=/mu-plugins/{GUARD_NAME}",
+             f"{stage}/wp-content/", f"{prod}/wp-content"])
         ui.success(f"Copied wp-content from {ui.bold(staging)} to {ui.bold(domain)}.")
+
+        # Staging is hidden from search engines; the live site keeps its own setting.
+        visible = as_site_user(prod_user, ["wp", "option", "get", "blog_public", f"--path={prod}"]).strip() or "1"
 
         as_site_user(prod_user, ["wp", "db", "reset", "--yes", f"--path={prod}"])
         clpctl(["db:import", f"--databaseName={prod_db}", f"--file={dump}"])
         ui.success(f"Imported the database into {ui.bold(domain)}.")
 
         as_site_user(prod_user, ["wp", "search-replace", f"//{staging}", f"//{domain}", f"--path={prod}"])
+        as_site_user(prod_user, ["wp", "option", "update", "blog_public", visible, f"--path={prod}"])
         as_site_user(prod_user, ["wp", "cache", "flush", f"--path={prod}"])
         ui.success(f"{ui.bold(domain)} now runs {staging}'s content.")
     except (CloudPanelError, OSError) as error:
