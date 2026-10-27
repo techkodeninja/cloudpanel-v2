@@ -1,6 +1,6 @@
 """init:install: set up a fresh Ubuntu/Debian server with CloudPanel.
 
-    cloudpanel init:install --cfToken='...' [--installerSha256=<hash>]
+    cloudpanel init:install --cfToken='...' [--installerSha256=<hash>] [--panelDomain=panel.example.com]
 
 1. Installs Certbot and its Cloudflare DNS plugin (snap), and a hook so
    renewed certificates go onto the sites that use them.
@@ -9,6 +9,7 @@
    CloudPanel publishes, and only then runs it.
 4. Creates the admin user with a generated password, prints it once and
    saves it to /root/.cloudflare/admin (root-only).
+5. With --panelDomain, puts the admin on that domain (see panel:domain).
 """
 
 import hashlib
@@ -46,6 +47,7 @@ def install(params):
     expected_sha256 = params.get("installerSha256") or INSTALLER_SHA256
     if expected_sha256 is True:
         raise CloudPanelError("--installerSha256 needs a value: --installerSha256=<hash>")
+    panel_domain = _panel_domain(params)
 
     install_certbot()
     certificates.ensure_renewal_hook()
@@ -53,11 +55,25 @@ def install(params):
 
     if command_exists("clpctl"):
         ui.warn("CloudPanel is already installed; skipping the installer and admin user.")
-        return
+    else:
+        if not install_cloudpanel(expected_sha256.lower()):
+            return
+        create_admin_user()
 
-    if not install_cloudpanel(expected_sha256.lower()):
-        return
-    create_admin_user()
+    if panel_domain:
+        from . import panel
+        panel.set_domain(panel_domain)
+
+
+def _panel_domain(params):
+    """--panelDomain, checked before anything is installed."""
+    if "panelDomain" not in params:
+        return None
+    value = params["panelDomain"]
+    if not isinstance(value, str) or not value.strip():
+        raise CloudPanelError("--panelDomain needs a value: --panelDomain=panel.example.com")
+    from . import panel
+    return panel._normalize(value)
 
 
 def install_certbot():

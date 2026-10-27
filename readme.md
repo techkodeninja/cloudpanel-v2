@@ -28,10 +28,22 @@ cloudpanel site:add:php --domainName='amicable.codestacks.cc'
 cloudpanel site:fix:ssh --apply
 cloudpanel github:key
 cloudpanel cloudflare:token          # new token if the old one leaked
+cloudpanel panel:domain --domainName='panel.codestacks.cc'
 cloudpanel site:update:certificate --domainName='amicable.codestacks.cc'
 cloudpanel site:update:certificates  # every site whose certificate is older than its Let's Encrypt one
 cloudpanel site:migration:wordpress --domainName='codestacks.cc' --stagingName='staging.codestacks.cc'
 </pre>
+
+## The admin on your own domain
+<pre>
+cloudpanel panel:domain --domainName='panel.codestacks.cc'
+cloudpanel init:install --cfToken='...' --panelDomain='panel.codestacks.cc'   # or while installing
+</pre>
+1. Add a DNS record in Cloudflare for `panel.codestacks.cc` pointing to the server (proxied or not).
+2. The command creates a reverse-proxy site for it that forwards to the panel on `https://127.0.0.1:8443` (CloudPanel's own recommended setup for custom certificates), and installs a Let's Encrypt certificate through Cloudflare. The renewal hook keeps it current.
+3. `CP_URL` in `/root/.cloudflare/admin` is updated. `https://<server-ip>:8443` keeps working.
+
+Running it again for the same domain only refreshes the certificate. It won't touch a domain that's already an ordinary site.
 
 ## Staging (WordPress and ClassicPress)
 <pre>
