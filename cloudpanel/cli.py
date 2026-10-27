@@ -21,6 +21,7 @@ COMMANDS = {
     "github:key": "github_key:show",
     "github:key:rotate": "github_key:rotate",
     "cloudflare:token": "cloudflare:token",
+    "panel:domain": "panel:domain",
     "site:install:certificate": "certificate:install",
     "site:update:certificate": "certificate:update",
     "site:update:certificates": "certificate:update_all",
@@ -62,6 +63,7 @@ def help_text():
 cloudpanel init:install --cfToken='0123456789abcdef0123456789'
 {note('  Creates admin cpwarren with a generated password, saved to /root/.cloudflare/admin.')}
 {note('  Optional: --installerSha256=<hash> if CloudPanel has published a new installer.')}
+{note('  Optional: --panelDomain=panel.domain.com to reach the admin there (see panel:domain).')}
 
 {h('sites')}
 cloudpanel site:add:classicpress --domainName='domain.com' --cpAdmin='john' --cpPassword='1234567890' --cpEmail='john@domain.com' --cpType='single'
@@ -86,6 +88,11 @@ cloudpanel github:key:rotate                              {note('(replace it wit
 
 {h('cloudflare')}
 cloudpanel cloudflare:token                               {note('(replace the saved token; asks for it, checks it first)')}
+
+{h('panel')}
+cloudpanel panel:domain --domainName='panel.domain.com'
+{note('  The CloudPanel admin at https://panel.domain.com (Let\'s Encrypt through Cloudflare, renewed automatically).')}
+{note('  Needs a DNS record for it in Cloudflare. https://<server-ip>:8443 keeps working.')}
 
 {h('certificate')}
 cloudpanel site:install:certificate --domainName='domain.com'
