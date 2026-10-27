@@ -23,6 +23,7 @@ COMMANDS = {
     "cloudflare:token": "cloudflare:token",
     "site:install:certificate": "certificate:install",
     "site:update:certificate": "certificate:update",
+    "site:update:certificates": "certificate:update_all",
     "site:migration:classicpress": "migrate:wordpress",
     "site:migration:novaris": "migrate:novaris",
     "site:migration:wordpress": "migrate:wordpress",
@@ -54,6 +55,7 @@ def help_text():
     github_show = note("(show this server's shared GitHub key)")
     version_line = note(f"cloudpanel {__version__}")
     cert_note = note("  update: reinstalls the Let's Encrypt certificate if the site's is missing or expires within 30 days.")
+    certs_note = note("  updates: every site whose certificate is older than its Let's Encrypt one. Certbot runs this after each renewal.")
     return f"""
 {h('main')}
 cloudpanel init:install --cfToken='0123456789abcdef0123456789'
@@ -87,7 +89,9 @@ cloudpanel cloudflare:token                               {note('(replace the sa
 {h('certificate')}
 cloudpanel site:install:certificate --domainName='domain.com'
 cloudpanel site:update:certificate --domainName='domain.com'
+cloudpanel site:update:certificates [--certName='domain.com']
 {cert_note}
+{certs_note}
 
 {h('migration')}
 cloudpanel site:migration:classicpress --domainName='domain.com' --stagingName='staging.domain.com'

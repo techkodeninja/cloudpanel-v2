@@ -8,7 +8,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from cloudpanel import cli, ui
+from cloudpanel import certificates, cli, ui
 from cloudpanel.commands import init
 from tests.helpers import FakeCommands
 
@@ -39,6 +39,7 @@ class InitInstallTest(unittest.TestCase):
             mock.patch.object(init, "TOKEN_FILE", cloudflare / "token"),
             mock.patch.object(init, "ADMIN_FILE", cloudflare / "admin"),
             mock.patch.object(init, "CERTBOT", self.tmp / "usr-bin-certbot"),
+            mock.patch.object(certificates, "LETSENCRYPT_LIVE", self.tmp / "letsencrypt" / "live"),
             mock.patch("urllib.request.urlopen", lambda *a, **k: FakeResponse(FAKE_INSTALLER)),
             mock.patch("cloudpanel.system.server_ip", lambda: "192.168.50.11"),
         ]

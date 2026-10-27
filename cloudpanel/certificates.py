@@ -1,6 +1,8 @@
 """Let's Encrypt certificates through Cloudflare DNS, installed on sites."""
 
+import os
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,6 +13,50 @@ from .run import clpctl, run
 LETSENCRYPT_LIVE = Path("/etc/letsencrypt/live")
 CLOUDFLARE_CREDENTIALS = Path("/root/.cloudflare/token")
 NGINX_CERTIFICATES = Path("/etc/nginx/ssl-certificates")
+DEFAULT_PROGRAM = "/usr/local/bin/cloudpanel"
+
+
+def renewal_hook_path():
+    """Certbot runs every script here after it renews a certificate."""
+    return LETSENCRYPT_LIVE.parent / "renewal-hooks" / "deploy" / "cloudpanel"
+
+
+def renewal_hook_script(program):
+    return (
+        "#!/bin/sh\n"
+        "# Installed by cloudpanel. Certbot renews certificates in /etc/letsencrypt,\n"
+        "# but CloudPanel serves its own copy; this puts the renewed certificate on\n"
+        "# every site that uses it ($RENEWED_LINEAGE says which one was renewed).\n"
+        f"CLOUDPANEL_NO_UPDATE_CHECK=1 exec {program} site:update:certificates\n"
+    )
+
+
+def _program():
+    """Path of the cloudpanel program to call from the hook."""
+    from .commands.self_update import installed_path
+    return str(installed_path() or shutil.which("cloudpanel") or DEFAULT_PROGRAM)
+
+
+def ensure_renewal_hook(program=None):
+    """Install (or refresh) the certbot deploy hook. True if it was written.
+
+    Never raises: a missing hook is reported, not a reason to stop."""
+    path = renewal_hook_path()
+    script = renewal_hook_script(program or _program())
+    try:
+        if path.is_file() and not path.is_symlink() and path.read_text() == script:
+            return False
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(".cloudpanel.tmp")
+        tmp.write_text(script)
+        os.chmod(tmp, 0o755)
+        os.replace(tmp, path)
+    except OSError as error:
+        ui.warn(f"Could not install the certificate renewal hook ({path}): {error}. "
+                "Renewed certificates won't reach sites until you run cloudpanel site:update:certificates.")
+        return False
+    ui.success(f"Renewed certificates now go onto sites automatically (hook: {path}).")
+    return True
 
 
 def certificate_for(domain):
@@ -38,6 +84,7 @@ def install_site_certificate(domain):
     name, domains = certificate_for(domain)
     live = LETSENCRYPT_LIVE / name
     cert, key = live / "fullchain.pem", live / "privkey.pem"
+    ensure_renewal_hook()
 
     if not cert.exists():
         args = [
