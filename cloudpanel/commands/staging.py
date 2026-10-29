@@ -23,7 +23,7 @@ from .. import certificates, node, nginx, system, ui
 from ..errors import CloudPanelError, UsageError
 from ..run import as_site_user, clpctl, run
 from ..sites import htdocs, nginx_conf, require, site_username
-from .sites import setup_site_user
+from .sites import add_database, removed_on_failure, setup_site_user, undo_new_site
 from .wordpress import DEFAULT_PHP_VERSION
 
 GUARD_NAME = "cloudpanel-staging.php"
@@ -172,9 +172,14 @@ def create(params):
         as_site_user(staging_user, ["tee", mu_plugins / GUARD_NAME], input=guard_plugin(staging))
         stage_wp("cache", "flush")
         ui.success("Made the copy private: login required, hidden from search engines, no email.")
-    except (CloudPanelError, OSError) as error:
+    except (CloudPanelError, OSError, KeyboardInterrupt) as error:
+        if not exists:
+            undo_new_site(staging)
+        if isinstance(error, KeyboardInterrupt):
+            raise
+        where = "" if not exists else f"{staging} may be incomplete. "
         raise CloudPanelError(f"Staging copy failed: {error}\n{domain} was not changed; "
-                              f"{staging} may be incomplete. Run this again to retry.") from None
+                              f"{where}Run this again to retry.") from None
     finally:
         shutil.rmtree(dump_dir, ignore_errors=True)
 
@@ -210,16 +215,7 @@ def _create_site(staging, user, php_version, db_password):
         nginx.remove_www1(nginx_conf(staging), staging)
     except OSError as error:
         ui.warn(f"Could not tidy the nginx config: {error}")
-    try:
-        clpctl([
-            "db:add",
-            f"--domainName={staging}",
-            f"--databaseName={user}",
-            f"--databaseUserName={user}",
-            f"--databaseUserPassword={db_password}",
-        ])
-    except CloudPanelError as error:
-        raise CloudPanelError(f"Could not create the database for {staging}: {error}") from None
-    ui.success(f"Database {ui.bold(user)} has been added.")
+    with removed_on_failure(staging):
+        add_database(staging, user, user, db_password)
     if not certificates.install_site_certificate(staging):
         ui.exit_code = 1

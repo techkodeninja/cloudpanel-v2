@@ -120,7 +120,9 @@ class RestoreTest(SiteTestCase):
         self.assertEqual(code, 1)
         self.assertIn("Could not read DB_PASSWORD", err)
         self.assertFalse(any(a[:2] == ["clpctl", "db:add"] for a in fakes.argvs))
-        self.assertEqual(fakes.argvs[-1][4:6], ["rm", "-rf"])
+        # Temporary files removed, then the half-made site, so the restore can be run again.
+        self.assertEqual(fakes.argvs[-2][4:6], ["rm", "-rf"])
+        self.assertEqual(fakes.argvs[-1], ["clpctl", "site:delete", "--domainName=example.com"])
 
 
 class MigrationTest(SiteTestCase):
