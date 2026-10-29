@@ -1,4 +1,11 @@
-"""site:add:php, site:add:static, site:add:reverse-proxy."""
+"""site:add:php, site:add:static, site:add:reverse-proxy.
+
+Also the shared steps for commands that create a site and then set it up
+(WordPress, ClassicPress, restores, staging): the database, and removing a
+site again when setting it up fails part-way.
+"""
+
+from contextlib import contextmanager
 
 from .. import certificates, git_identity, node, ssh, system, ui
 from ..errors import CloudPanelError
@@ -16,6 +23,52 @@ def _create_site(domain, clpctl_args):
         clpctl(clpctl_args)
     except CloudPanelError as error:
         raise CloudPanelError(f"Could not create {domain}: {error}") from None
+
+
+MYSQL_ROOT_REFUSED = "Access denied for user 'root'"
+
+
+def add_database(domain, name, user, password):
+    """clpctl db:add, with a clear explanation when MySQL refuses CloudPanel's root login."""
+    try:
+        clpctl([
+            "db:add",
+            f"--domainName={domain}",
+            f"--databaseName={name}",
+            f"--databaseUserName={user}",
+            f"--databaseUserPassword={password}",
+        ])
+    except CloudPanelError as error:
+        message = f"Could not create the database for {domain}: {error}"
+        if MYSQL_ROOT_REFUSED in str(error):
+            message += (
+                "\nMySQL refused CloudPanel's root password, so no database can be created on this server "
+                "until it matches. Compare the password from \"clpctl db:show:master-credentials\" with MySQL's."
+            )
+        raise CloudPanelError(message) from None
+    ui.success(f"Database {ui.bold(name)} has been added.")
+
+
+def undo_new_site(domain):
+    """Delete a site this command has just created, so it can simply be run again."""
+    try:
+        clpctl(["site:delete", f"--domainName={domain}"], input="yes\n")
+    except CloudPanelError as error:
+        ui.warn(f"Could not remove the half-made {domain} ({error}). "
+                f"Delete it with: cloudpanel site:delete --domainName='{domain}'")
+        return
+    ui.info(f"Removed the half-made {ui.bold(domain)}, so the same command can be run again once this is fixed.")
+
+
+@contextmanager
+def removed_on_failure(domain):
+    """Around the setup of a site this command just created: if a step fails
+    (or Ctrl-C), delete the site again instead of leaving half of it."""
+    try:
+        yield
+    except (CloudPanelError, OSError, KeyboardInterrupt):
+        undo_new_site(domain)
+        raise
 
 
 def _certificate(domain):

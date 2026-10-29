@@ -13,7 +13,7 @@ from .. import certificates, node, sites, system, ui
 from ..errors import CloudPanelError
 from ..run import as_site_user, clpctl
 from ..sites import nginx_conf, require, site_username
-from .sites import setup_site_user
+from .sites import add_database, removed_on_failure, setup_site_user
 from .wordpress import DEFAULT_PHP_VERSION
 
 
@@ -47,50 +47,41 @@ def restore(params):
         raise CloudPanelError(f"Could not create {domain}: {error}") from None
     ui.success(f"Site {ui.bold(domain)} has been added (PHP {php_version}).")
 
-    def as_user(*args):
-        return as_site_user(user, list(args))
+    with removed_on_failure(domain):
+        def as_user(*args):
+            return as_site_user(user, list(args))
 
-    try:
-        # Start clean, so a leftover file from an earlier run is never reused.
-        as_user("rm", "-rf", archive, extracted)
-        as_user("mkdir", "-p", extracted)
-        as_user("wget", "-q", "-O", archive, url)
-        as_user("tar", "-xf", archive, "-C", extracted)
-        ui.success("backup.tar has been downloaded.")
-
-        # The archive holds home/<user>/htdocs and home/<user>/backups/...
-        saved = extracted / "home" / user
-        as_user("rm", "-rf", home / "htdocs")
-        as_user("mv", saved / "htdocs", home / "htdocs")
-
-        db_password = as_user("wp", "config", "get", "DB_PASSWORD", f"--path={home / 'htdocs' / domain}").strip()
-        if not db_password:
-            raise CloudPanelError("Could not read DB_PASSWORD from the restored wp-config.php.")
         try:
-            clpctl([
-                "db:add",
-                f"--domainName={domain}",
-                f"--databaseName={user}",
-                f"--databaseUserName={user}",
-                f"--databaseUserPassword={db_password}",
-            ])
-        except CloudPanelError as error:
-            raise CloudPanelError(f"Could not create the database for {domain}: {error}") from None
-        ui.success(f"Database {ui.bold(user)} has been added.")
-
-        dumps = saved / "backups" / "databases" / user
-        dump = latest_file(dumps, ".sql.gz")
-        if not dump:
-            raise CloudPanelError(f"No .sql.gz file found in the archive ({dumps}).")
-        clpctl(["db:import", f"--databaseName={user}", f"--file={dump}"])
-        ui.success(f"Database {ui.bold(user)} has been imported ({dump.name}).")
-    except CloudPanelError as error:
-        raise CloudPanelError(f"Restore of {domain} failed: {error}") from None
-    finally:
-        try:
+            # Start clean, so a leftover file from an earlier run is never reused.
             as_user("rm", "-rf", archive, extracted)
+            as_user("mkdir", "-p", extracted)
+            as_user("wget", "-q", "-O", archive, url)
+            as_user("tar", "-xf", archive, "-C", extracted)
+            ui.success("backup.tar has been downloaded.")
+
+            # The archive holds home/<user>/htdocs and home/<user>/backups/...
+            saved = extracted / "home" / user
+            as_user("rm", "-rf", home / "htdocs")
+            as_user("mv", saved / "htdocs", home / "htdocs")
+
+            db_password = as_user("wp", "config", "get", "DB_PASSWORD", f"--path={home / 'htdocs' / domain}").strip()
+            if not db_password:
+                raise CloudPanelError("Could not read DB_PASSWORD from the restored wp-config.php.")
+            add_database(domain, user, user, db_password)
+
+            dumps = saved / "backups" / "databases" / user
+            dump = latest_file(dumps, ".sql.gz")
+            if not dump:
+                raise CloudPanelError(f"No .sql.gz file found in the archive ({dumps}).")
+            clpctl(["db:import", f"--databaseName={user}", f"--file={dump}"])
+            ui.success(f"Database {ui.bold(user)} has been imported ({dump.name}).")
         except CloudPanelError as error:
-            ui.warn(f"Could not remove {archive}: {error}")
+            raise CloudPanelError(f"Restore of {domain} failed: {error}") from None
+        finally:
+            try:
+                as_user("rm", "-rf", archive, extracted)
+            except CloudPanelError as error:
+                ui.warn(f"Could not remove {archive}: {error}")
 
     if not certificates.install_site_certificate(domain):
         ui.exit_code = 1

@@ -90,6 +90,26 @@ class CreateStagingTest(StagingTestCase):
         self.assertIn("Staging is ready: https://staging.example.com", out)
         self.assertIn("--filesOnly", out)
 
+    def test_new_staging_is_removed_when_the_copy_fails(self):
+        with FakeCommands(*STAGING_FAKES) as fakes, mock.patch.object(
+                staging, "run", side_effect=staging.CloudPanelError("rsync failed: disk full")):
+            code, out, err = self.cli("site:staging:create", "--domainName=example.com")
+        self.assertEqual(code, 1)
+        self.assertIn("disk full", err)
+        self.assertNotIn("may be incomplete", err)
+        self.assertIn(["clpctl", "site:delete", "--domainName=staging.example.com"], fakes.argvs)
+        self.assertFalse(any(a[:2] == ["clpctl", "site:delete"] and "--domainName=example.com" in a
+                             for a in fakes.argvs))
+
+    def test_existing_staging_is_kept_when_the_copy_fails(self):
+        self.existing_staging()
+        with FakeCommands(*STAGING_FAKES) as fakes, mock.patch.object(
+                staging, "run", side_effect=staging.CloudPanelError("rsync failed: disk full")):
+            code, _, err = self.cli("site:staging:create", "--domainName=example.com", "--yes")
+        self.assertEqual(code, 1)
+        self.assertIn("may be incomplete", err)
+        self.assertFalse(any(a[:2] == ["clpctl", "site:delete"] for a in fakes.argvs))
+
     def test_custom_name_and_live_address_settings(self):
         (self.live / "wp-config.php").write_text("<?php define( 'WP_HOME', 'https://example.com' );\n")
         stage = self.home / "example-test" / "htdocs" / "test.example.com"

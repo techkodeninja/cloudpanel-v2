@@ -13,7 +13,7 @@ from .. import certificates, node, nginx, system, ui
 from ..errors import CloudPanelError, UsageError
 from ..run import as_site_user, clpctl
 from ..sites import htdocs, nginx_conf, require, site_username
-from .sites import setup_site_user
+from .sites import add_database, removed_on_failure, setup_site_user
 
 DEFAULT_PHP_VERSION = "8.3"
 SITE_TYPES = ("single", "subdirectory", "subdomain")
@@ -68,58 +68,49 @@ def add_site(params, flavor_key):
         raise CloudPanelError(f"Could not create {domain}: {error}") from None
     ui.success(f"Site {ui.bold(domain)} has been added (PHP {php_version}).")
 
-    try:
-        nginx.remove_www1(conf, domain)
-    except OSError as error:
-        ui.warn(f"Could not tidy the nginx config: {error}")
-
-    if site_type == "subdomain":
+    with removed_on_failure(domain):
         try:
-            nginx.add_wildcard_server_name(conf, domain)
-        except Exception as error:
-            raise CloudPanelError(f"Could not set up *.{domain} in nginx: {error}") from None
-        ui.success(f"nginx now also serves {ui.bold('*.' + domain)}")
+            nginx.remove_www1(conf, domain)
+        except OSError as error:
+            ui.warn(f"Could not tidy the nginx config: {error}")
 
-    try:
-        clpctl([
-            "db:add",
-            f"--domainName={domain}",
-            f"--databaseName={user}",
-            f"--databaseUserName={user}",
-            f"--databaseUserPassword={db_password}",
-        ])
-    except CloudPanelError as error:
-        raise CloudPanelError(f"Could not create the database for {domain}: {error}") from None
-    ui.success(f"Database {ui.bold(user)} has been added.")
+        if site_type == "subdomain":
+            try:
+                nginx.add_wildcard_server_name(conf, domain)
+            except Exception as error:
+                raise CloudPanelError(f"Could not set up *.{domain} in nginx: {error}") from None
+            ui.success(f"nginx now also serves {ui.bold('*.' + domain)}")
 
-    # wp-cli as the site user; every value is passed as-is.
-    def wp(*args):
-        as_site_user(user, ["wp", *args, f"--path={path}", "--quiet"])
+        add_database(domain, user, user, db_password)
 
-    install_args = [
-        f"--url=https://{domain}",
-        f"--title={domain}",
-        f"--admin_user={admin}",
-        f"--admin_password={password}",
-        f"--admin_email={email}",
-    ]
-    try:
-        wp("core", "download", *flavor["download"])
-        ui.success(f"{name} downloaded.")
-        wp("config", "create", "--dbhost=127.0.0.1", f"--dbname={user}", f"--dbuser={user}", f"--dbpass={db_password}")
-        ui.success("wp-config.php file created.")
-        if site_type == "subdirectory":
-            wp("core", "multisite-install", *install_args)
-            ui.success(f"{name} Multisite installed successfully.")
-        elif site_type == "subdomain":
-            wp("core", "multisite-install", "--subdomains", *install_args)
-            ui.success(f"{name} Multisite (subdomains) installed successfully.")
-        else:
-            wp("core", "install", *install_args)
-            ui.success(f"{name} installed successfully.")
-        wp("config", "set", "DISALLOW_FILE_EDIT", "true", "--raw")
-    except CloudPanelError as error:
-        raise CloudPanelError(f"{name} install failed for {domain}: {error}") from None
+        # wp-cli as the site user; every value is passed as-is.
+        def wp(*args):
+            as_site_user(user, ["wp", *args, f"--path={path}", "--quiet"])
+
+        install_args = [
+            f"--url=https://{domain}",
+            f"--title={domain}",
+            f"--admin_user={admin}",
+            f"--admin_password={password}",
+            f"--admin_email={email}",
+        ]
+        try:
+            wp("core", "download", *flavor["download"])
+            ui.success(f"{name} downloaded.")
+            wp("config", "create", "--dbhost=127.0.0.1", f"--dbname={user}", f"--dbuser={user}", f"--dbpass={db_password}")
+            ui.success("wp-config.php file created.")
+            if site_type == "subdirectory":
+                wp("core", "multisite-install", *install_args)
+                ui.success(f"{name} Multisite installed successfully.")
+            elif site_type == "subdomain":
+                wp("core", "multisite-install", "--subdomains", *install_args)
+                ui.success(f"{name} Multisite (subdomains) installed successfully.")
+            else:
+                wp("core", "install", *install_args)
+                ui.success(f"{name} installed successfully.")
+            wp("config", "set", "DISALLOW_FILE_EDIT", "true", "--raw")
+        except CloudPanelError as error:
+            raise CloudPanelError(f"{name} install failed for {domain}: {error}") from None
 
     if not certificates.install_site_certificate(domain):
         ui.exit_code = 1

@@ -1,7 +1,9 @@
 from unittest import mock
 
 from cloudpanel import nginx, run
+from cloudpanel.commands import sites as sites_commands
 from cloudpanel.commands import wordpress
+from cloudpanel.errors import CommandError
 from tests.helpers import FakeCommands
 from tests.test_sites import FAKES, SiteTestCase
 
@@ -134,6 +136,46 @@ class WordPressTest(SiteTestCase):
         self.assertIn("WordPress install failed for example.com", err)
         self.assertIn("Could not resolve host", err)
         self.assertFalse(any(a[0] == "certbot" for a in fakes.argvs))
+
+    def test_database_failure_removes_the_site(self):
+        refused = ("clpctl db:add --domainName=demo.example.com failed: databaseName: An exception occurred in the "
+                   "driver: SQLSTATE[HY000] [1045] Access denied for user 'root'@'localhost' (using password: YES)")
+        real = sites_commands.clpctl
+
+        def clpctl(args, **options):
+            if args[0] == "db:add":
+                real(args, **options)  # recorded
+                raise CommandError(refused)
+            return real(args, **options)
+
+        with FakeCommands(*FAKES) as fakes, mock.patch.object(sites_commands, "clpctl", clpctl):
+            code, out, err = self.cli("site:add:classicpress", "--domainName=demo.example.com", "--cpAdmin=ben",
+                                      "--cpPassword=x", "--cpEmail=b@example.com", "--cpType=subdirectory")
+        self.assertEqual(code, 1)
+        self.assertIn("Access denied for user 'root'", err)
+        self.assertIn("clpctl db:show:master-credentials", err)
+        delete = [c for c in fakes.calls if c["argv"][:2] == ["clpctl", "site:delete"]]
+        self.assertEqual([c["argv"] for c in delete], [["clpctl", "site:delete", "--domainName=demo.example.com"]])
+        self.assertEqual(delete[0]["stdin"], "yes\n")
+        self.assertIn("Removed the half-made", out)
+        self.assertFalse(any(a[:5] == ["sudo", "-u", "example-demo", "-H", "wp"] for a in fakes.argvs))
+        self.assertFalse(any(a[0] == "certbot" for a in fakes.argvs))
+
+    def test_wp_failure_removes_the_site(self):
+        with FakeCommands(*FAKES) as fakes, mock.patch.object(
+                wordpress, "as_site_user", side_effect=wordpress.CloudPanelError("wp core install failed")):
+            code, _, _ = self.cli("site:add:wordpress", "--domainName=example.com", "--wpAdmin=ben",
+                                  "--wpPassword=x", "--wpEmail=b@example.com")
+        self.assertEqual(code, 1)
+        self.assertIn(["clpctl", "site:delete", "--domainName=example.com"], fakes.argvs)
+
+    def test_site_creation_failure_deletes_nothing(self):
+        with FakeCommands(*FAKES, exit_code=1) as fakes:
+            code, _, err = self.cli("site:add:wordpress", "--domainName=example.com", "--wpAdmin=ben",
+                                    "--wpPassword=x", "--wpEmail=b@example.com")
+        self.assertEqual(code, 1)
+        self.assertIn("Could not create example.com", err)
+        self.assertFalse(any(a[:2] == ["clpctl", "site:delete"] for a in fakes.argvs))
 
 
 if __name__ == "__main__":
