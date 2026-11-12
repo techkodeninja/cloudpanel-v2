@@ -15,8 +15,8 @@ from tests.helpers import FakeCommands
 # A stand-in CloudPanel installer: "installs" CloudPanel by putting a
 # recording clpctl next to the other fake commands on PATH.
 FAKE_INSTALLER = b"""#!/bin/bash
-bin_dir="$(dirname "$(command -v snap)")"
-ln -s "$(readlink -f "$bin_dir/snap")" "$bin_dir/clpctl"
+bin_dir="$(dirname "$(command -v apt-get)")"
+ln -s "$(readlink -f "$bin_dir/apt-get")" "$bin_dir/clpctl"
 echo "fake CloudPanel installer ran"
 """
 FAKE_SHA256 = hashlib.sha256(FAKE_INSTALLER).hexdigest()
@@ -72,15 +72,16 @@ class InitInstallTest(unittest.TestCase):
         return code, out.getvalue(), err.getvalue()
 
     def test_fresh_server(self):
-        with FakeCommands("snap") as fakes:
+        with FakeCommands("apt-get") as fakes:
             code, out, err = self.cli("--cfToken=abc=123_-XYZ", f"--installerSha256={FAKE_SHA256}")
 
         self.assertEqual(code, 0, err)
         argvs = fakes.argvs
-        # Certbot + plugin via snap
-        self.assertIn(["snap", "install", "--classic", "certbot"], argvs)
-        self.assertIn(["snap", "install", "certbot-dns-cloudflare"], argvs)
-        self.assertTrue(init.CERTBOT.is_symlink())
+        # Certbot + plugin from Ubuntu's packages (apt), not snap
+        apt = ["apt-get", "-o", "DPkg::Lock::Timeout=600"]
+        self.assertIn([*apt, "update"], argvs)
+        self.assertIn([*apt, "install", "-y", "--no-install-recommends", "certbot", "python3-certbot-dns-cloudflare"], argvs)
+        self.assertFalse(any(a[0] == "snap" for a in argvs))
         # Token: root-only, value kept whole (including '=')
         self.assertEqual(stat.S_IMODE(init.TOKEN_FILE.stat().st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(init.CLOUDFLARE_DIR.stat().st_mode), 0o700)
@@ -112,7 +113,7 @@ class InitInstallTest(unittest.TestCase):
         self.assertNotIn(password, log)  # never written to the log
 
     def test_checksum_mismatch_does_not_run_installer(self):
-        with FakeCommands("snap") as fakes:
+        with FakeCommands("apt-get") as fakes:
             code, out, err = self.cli("--cfToken=abc")
         self.assertEqual(code, 1)
         self.assertIn("does not match its expected checksum", err)
@@ -124,7 +125,7 @@ class InitInstallTest(unittest.TestCase):
         self.assertFalse(init.ADMIN_FILE.exists())
 
     def test_already_installed_skips_installer(self):
-        with FakeCommands("snap", "clpctl") as fakes:
+        with FakeCommands("apt-get", "clpctl") as fakes:
             code, out, _ = self.cli("--cfToken=abc", f"--installerSha256={FAKE_SHA256}")
         self.assertEqual(code, 0)
         self.assertIn("already installed", out)
@@ -133,13 +134,13 @@ class InitInstallTest(unittest.TestCase):
     def test_existing_token_is_kept(self):
         init.CLOUDFLARE_DIR.mkdir(parents=True)
         init.TOKEN_FILE.write_text("dns_cloudflare_api_token = original\n")
-        with FakeCommands("snap", "clpctl"):
+        with FakeCommands("apt-get", "clpctl"):
             _, out, _ = self.cli("--cfToken=new")
         self.assertIn("original", init.TOKEN_FILE.read_text())
         self.assertIn("was not saved", out)
 
     def test_no_token_warns(self):
-        with FakeCommands("snap", "clpctl"):
+        with FakeCommands("apt-get", "clpctl"):
             _, out, _ = self.cli()
         self.assertIn("No --cfToken given", out)
         self.assertTrue(step_line(out, "Saving Cloudflare token").endswith("⚠"))
@@ -151,17 +152,17 @@ class InitInstallTest(unittest.TestCase):
         self.assertIn("--installerSha256 needs a value", err)
 
     def test_certbot_failure_stops(self):
-        with FakeCommands("snap", exit_code=1, error="snap: cannot communicate with server"):
+        with FakeCommands("apt-get", exit_code=1, error="E: Unable to locate package python3-certbot-dns-cloudflare"):
             code, _, err = self.cli("--cfToken=abc", f"--installerSha256={FAKE_SHA256}")
         self.assertEqual(code, 1)
         self.assertIn("Could not install Certbot", err)
-        self.assertIn("cannot communicate with server", err)
+        self.assertIn("Unable to locate package python3-certbot-dns-cloudflare", err)
         self.assertFalse(init.TOKEN_FILE.exists())
-        self.assertIn("snap install --classic", self.log())
+        self.assertIn("apt-get -o DPkg::Lock::Timeout=600 update", self.log())
 
     def test_installer_failure_shows_its_last_lines(self):
         failing = b"#!/bin/bash\necho step one\necho 'E: Unable to locate package mariadb-server'\nexit 100\n"
-        with FakeCommands("snap") as fakes, \
+        with FakeCommands("apt-get") as fakes, \
                 mock.patch("urllib.request.urlopen", lambda *a, **k: FakeResponse(failing)):
             code, out, err = self.cli("--cfToken=abc", f"--installerSha256={hashlib.sha256(failing).hexdigest()}")
         self.assertEqual(code, 1)

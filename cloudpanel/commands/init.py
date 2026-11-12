@@ -2,7 +2,7 @@
 
     cloudpanel init:install --cfToken='...' [--installerSha256=<hash>] [--panelDomain=panel.example.com]
 
-1. Installs Certbot and its Cloudflare DNS plugin (snap), and a hook so
+1. Installs Certbot and its Cloudflare DNS plugin (apt), and a hook so
    renewed certificates go onto the sites that use them.
 2. Saves the Cloudflare API token to /root/.cloudflare/token (root-only).
 3. Downloads the CloudPanel installer, checks its SHA-256 against the value
@@ -125,19 +125,21 @@ def _panel_domain(params):
 
 
 def install_certbot(step):
-    """Certbot + Cloudflare DNS plugin via snap (Debian needs snapd first)."""
+    """Certbot + its Cloudflare DNS plugin from the distribution's packages.
+
+    apt, not snap: the snap store is often blocked by filtering firewalls,
+    while apt uses the distribution's own mirrors (which CloudPanel's
+    installer needs anyway). A Certbot already installed (e.g. by snap on an
+    older server) is left as it is."""
     if CERTBOT.exists():
         step.detail = "already installed"
         return
+    # Wait for the package lock instead of failing: on a fresh server,
+    # unattended upgrades often hold it for the first few minutes.
+    apt = ["apt-get", "-o", "DPkg::Lock::Timeout=600"]
     try:
-        if system.os_id() == "debian" and not command_exists("snap"):
-            step.run(["apt-get", "update"])
-            step.run(["apt-get", "install", "-y", "snapd"])
-        step.run(["snap", "install", "--classic", "certbot"])
-        if not CERTBOT.exists() and not CERTBOT.is_symlink():
-            CERTBOT.symlink_to("/snap/bin/certbot")
-        step.run(["snap", "set", "certbot", "trust-plugin-with-root=ok"])
-        step.run(["snap", "install", "certbot-dns-cloudflare"])
+        step.run([*apt, "update"])
+        step.run([*apt, "install", "-y", "--no-install-recommends", "certbot", "python3-certbot-dns-cloudflare"])
     except (CloudPanelError, OSError) as error:
         raise CloudPanelError(f"Could not install Certbot: {error}\n"
                               "Certbot is needed for certificates; fix the error above and run init:install again.") from None
