@@ -93,7 +93,7 @@ class InitPanelDomainTest(unittest.TestCase):
             (live / name).write_text("x")
 
     def test_fresh_server_with_panel_domain(self):
-        with FakeCommands("snap") as fakes:
+        with FakeCommands("apt-get") as fakes:
             code, out, err = self.cli("--cfToken=abc", f"--installerSha256={FAKE_SHA256}",
                                       "--panelDomain=panel.example.com")
         self.assertEqual(code, 0, err)
@@ -102,7 +102,7 @@ class InitPanelDomainTest(unittest.TestCase):
         self.assertIn("CP_URL=https://panel.example.com", init.ADMIN_FILE.read_text())
 
     def test_bad_panel_domain_stops_before_installing(self):
-        with FakeCommands("snap") as fakes:
+        with FakeCommands("apt-get") as fakes:
             code, _, err = self.cli("--cfToken=abc", "--panelDomain")
         self.assertEqual(code, 1)
         self.assertIn("--panelDomain needs a value", err)

@@ -2,7 +2,7 @@
 
     steps = Steps(total=6, log_path=Path("/root/.cloudpanel/install-....log"))
     with steps.step("Installing Certbot") as step:
-        step.run(["snap", "install", "--classic", "certbot"])
+        step.run(["apt-get", "install", "-y", "certbot"])
         step.detail = "already installed"
 
 On a terminal each step shows a spinner and a timer while it runs, then one
